@@ -1,6 +1,15 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, firebaseConfigured, login, logout, register } from "./firebase";
-import { createCheckin, getCatalog, getMe, type CatalogItem } from "./api";
+import {
+  createCheckin,
+  getCatalog,
+  getCheckins,
+  getMe,
+  getSummary,
+  type CatalogItem,
+  type Checkin,
+  type Summary,
+} from "./api";
 import "./styles.css";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -19,6 +28,50 @@ function escapeHtml(value: string): string {
     };
     return entities[character];
   });
+}
+
+function renderSummary(summary: Summary) {
+  document.querySelector<HTMLElement>("#summary-checkins")!.textContent = String(summary.checkinCount);
+  document.querySelector<HTMLElement>("#summary-unlocks")!.textContent = String(summary.uniqueUnlockCount);
+  document.querySelector<HTMLElement>("#summary-countries")!.textContent = String(summary.byKind.country ?? 0);
+  document.querySelector<HTMLElement>("#summary-admin1")!.textContent = String(summary.byKind.admin1 ?? 0);
+}
+
+function renderHistory(checkins: Checkin[]) {
+  const history = document.querySelector<HTMLDivElement>("#history-panel");
+  if (!history) return;
+  if (checkins.length === 0) {
+    history.innerHTML = '<p class="muted">No check-ins yet. Your first one is waiting.</p>';
+    return;
+  }
+  history.innerHTML = checkins
+    .map((checkin) => {
+      const name = checkin.entity?.name ?? checkin.entityId;
+      const code = checkin.entity?.code ?? "";
+      const date = new Date(checkin.visitedAt).toLocaleDateString();
+      return `
+        <article class="history-item">
+          <div>
+            <strong>${escapeHtml(name)}</strong>
+            <small>${escapeHtml(code)} · ${escapeHtml(date)}</small>
+          </div>
+          ${checkin.note ? `<p>${escapeHtml(checkin.note)}</p>` : ""}
+        </article>`;
+    })
+    .join("");
+}
+
+async function refreshDashboardData(user: User) {
+  const history = document.querySelector<HTMLDivElement>("#history-panel");
+  if (history) history.innerHTML = '<p class="muted">Loading your check-ins...</p>';
+  try {
+    const [summary, checkins] = await Promise.all([getSummary(user), getCheckins(user)]);
+    renderSummary(summary);
+    renderHistory(checkins);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load your check-ins";
+    if (history) history.innerHTML = `<p class="warning">${escapeHtml(message)}</p>`;
+  }
 }
 
 function renderAuth(message = "") {
@@ -207,6 +260,7 @@ function setupCheckinForm(user: User) {
       selectedEntity = null;
       document.querySelector<HTMLParagraphElement>("#selected-entity")!.textContent = "No place selected";
       document.querySelector<HTMLTextAreaElement>("#checkin-note")!.value = "";
+      await refreshDashboardData(user);
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : "Unable to save check-in";
     } finally {
@@ -282,6 +336,7 @@ async function renderHome(user: User) {
   setupCatalogSearch(user);
   document.querySelector<HTMLInputElement>("#visited-date")!.value = new Date().toISOString().slice(0, 10);
   setupCheckinForm(user);
+  void refreshDashboardData(user);
   try {
     const me = await getMe(user);
     document.querySelector<HTMLParagraphElement>("#api-message")!.textContent =
