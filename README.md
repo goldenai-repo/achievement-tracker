@@ -45,29 +45,31 @@ All records are stored in the cloud and synchronized in real time across iOS, An
 
 | Platform | Status |
 |---|---|
-| iOS | Supported |
-| Android | Supported |
-| Web (PWA) | Supported |
+| Web | MVP target |
+| Android | Planned Kotlin client |
+| iOS | Planned after API stabilization |
 
 ---
 
 ## Tech Stack
 
 ### Frontend
-- **Flutter** — single Dart codebase targeting iOS, Android, and web
-- **Riverpod** — state management
-- **go_router** — declarative routing
+- **TypeScript/JavaScript + Vite** — first web demo
+- **Firebase Web SDK** — browser authentication
+- **Kotlin/Jetpack Compose** — planned Android client after the web/API contract stabilizes
 
 ### Backend
-- **Firebase Authentication** — handles all auth flows
-- **Cloud Firestore** — NoSQL real-time database for achievement records
-- **Firebase Storage** — media (photo) uploads
-- **Firebase App Check** — protects backend resources from abuse
-- **Google App Engine** (optional) — custom API server for advanced queries and third-party integrations
+- **Python + FastAPI** — API, authorization, validation, and domain logic
+- **Firebase Authentication** — registration/login and identity provider
+- **Firebase Admin Python SDK** — verifies Firebase ID tokens in FastAPI
+- **PostgreSQL** — source of truth for catalog, check-ins, unlocks, and sync
+- **SQLAlchemy + Alembic** — persistence and migrations
 
 ### Infrastructure
 - **Google Cloud Platform** — primary cloud provider
-- **Firebase Hosting** — web app deployment and CDN
+- **Cloud Run** — Python API deployment
+- **Cloud SQL** — managed PostgreSQL
+- **Firebase Hosting or Cloud Run** — web app deployment
 - **GitHub Actions** — CI/CD pipelines for automated testing and deployment
 - **GitHub** — source control and pull request management
 
@@ -75,7 +77,7 @@ All records are stored in the cloud and synchronized in real time across iOS, An
 - **Claude Code** — AI-assisted development CLI (Anthropic)
 - **GitHub Copilot** — in-editor AI code completion
 - **Google Cloud CLI (`gcloud`)** — local cloud resource management
-- **Firebase CLI** — emulator suite, hosting deploy, Firestore rules deploy
+- **Firebase CLI** — Firebase project and Auth tooling when needed
 
 ---
 
@@ -87,26 +89,12 @@ achievement-tracker/
 │   ├── IMPLEMENTATION_PLAN.md
 │   ├── ARCHITECTURE.md
 │   └── adr/                     # Architecture Decision Records
-├── app/                         # Flutter application (iOS + Android + Web)
-│   ├── lib/
-│   │   ├── features/            # Feature-first folder structure
-│   │   │   ├── auth/
-│   │   │   ├── achievements/
-│   │   │   ├── profile/
-│   │   │   └── sync/
-│   │   ├── core/                # Shared utilities, theme, routing
-│   │   └── main.dart
-│   ├── ios/
-│   ├── android/
-│   ├── web/
-│   └── pubspec.yaml
-├── backend/                     # Optional App Engine API server
-│   ├── src/
-│   └── app.yaml
-├── firebase/                    # Firestore rules, indexes, functions
-│   ├── firestore.rules
-│   ├── firestore.indexes.json
-│   └── functions/
+├── web/                         # Vite TypeScript web client
+├── backend/                     # FastAPI Python service
+│   ├── app/
+│   └── tests/
+├── data/seed/                   # Versioned country/state catalog seeds
+├── infra/                       # Docker and deployment configuration
 ├── .github/
 │   └── workflows/               # CI/CD pipelines
 ├── CLAUDE.md                    # Claude Code project instructions
@@ -118,15 +106,15 @@ achievement-tracker/
 ## Getting Started
 
 ### Prerequisites
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) >= 3.x
-- [Node.js](https://nodejs.org/) >= 18 (for Firebase Functions)
-- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
-- [Firebase CLI](https://firebase.google.com/docs/cli)
-- A Google Cloud / Firebase project
+- [Node.js](https://nodejs.org/) >= 20
+- Python >= 3.12 and [uv](https://docs.astral.sh/uv/)
+- Docker Desktop for local PostgreSQL
+- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) for deployment
+- A Firebase project with Email/Password Authentication enabled
 
 ### Setup Steps
 
-See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the full step-by-step setup guide covering:
+See [`docs/IMPLEMENTATION_PLAN_WEB_PYTHON.md`](docs/IMPLEMENTATION_PLAN_WEB_PYTHON.md) for the active step-by-step setup guide covering:
 1. Coding assistant configuration (Claude Code, Copilot)
 2. Google Cloud account and project setup
 3. Firebase service initialization
@@ -136,17 +124,14 @@ See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the full st
 ### Quick Start (after full setup)
 
 ```bash
-# Install Flutter dependencies
-cd app && flutter pub get
+# Start PostgreSQL locally
+docker compose -f infra/docker-compose.yml up -d db
 
-# Start Firebase emulators locally
-firebase emulators:start
+# Run the Python API
+cd backend && uv run uvicorn app.main:app --reload
 
-# Run the app on web (development)
-cd app && flutter run -d chrome
-
-# Run on a connected device/simulator
-cd app && flutter run
+# Run the web client
+cd web && npm install && npm run dev
 ```
 
 ---

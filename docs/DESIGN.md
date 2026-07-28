@@ -10,7 +10,7 @@ The first MVP validates the core loop:
 4. The check-in appears in a personal list and updates unique achievement counts.
 5. The same account sees the record after refresh and from another client.
 
-The first client is Flutter Web. The same Flutter project must also build for Android and iOS. Android Studio/Kotlin exploration is kept separate from the production app so it does not create a second client architecture.
+The first client is a JavaScript/TypeScript web application. Android/iOS clients will be Kotlin-based later. The web demo is intentionally independent of the mobile client so the team can validate the product and API without installing Flutter or committing to a cross-platform UI framework.
 
 ## 2. Scope and non-goals
 
@@ -20,60 +20,67 @@ The first client is Flutter Web. The same Flutter project must also build for An
 - Country and US-state catalog entries.
 - Manual check-in creation with date, optional note, and optional coordinates.
 - Personal check-in list and unique unlocked counts.
-- Firestore security rules and local emulator-based tests.
+- FastAPI authorization and local PostgreSQL-based API tests.
 - Real-time updates for the same signed-in user.
 
 ### Out of scope for the first MVP
 
 - AI extraction or autonomous data ingestion.
 - Social sharing, ranking, friend graphs, and public profiles.
-- Photos, push notifications, and offline conflict resolution beyond Firestore's basic client queue.
+- Photos, push notifications, and advanced offline conflict resolution.
 - Attractions, heritage, wildlife, and complex achievement rules.
 - Production deployment and billing setup.
 
 ## 3. Technical decisions
 
-- **Client:** Flutter, feature-first Dart structure, Riverpod for state, go_router for routing.
-- **Identity:** Firebase Authentication with email/password.
-- **Database:** Cloud Firestore. Firebase is the initial Google Cloud backend.
-- **Future API:** Python/FastAPI on Cloud Run for ingestion, normalization, and AI workflows. No custom API is needed for the first client path.
-- **Native learning:** A separate Kotlin Hello World project may be created outside `app/`; production Android code remains the Flutter target.
+- **Web client:** TypeScript/JavaScript with Vite. Keep the UI small and use the browser's `fetch` API for the Python backend.
+- **Mobile clients:** Kotlin/Jetpack Compose for Android first; Kotlin Multiplatform can share domain and networking code with iOS later.
+- **Identity:** Firebase Authentication with email/password in the web client. The Python backend verifies Firebase ID tokens using the Firebase Admin Python SDK.
+- **API:** Python/FastAPI with Pydantic and SQLAlchemy.
+- **Database:** PostgreSQL locally and Cloud SQL for production. PostgreSQL is the source of truth for catalog, check-ins, unlocks, and sync cursors.
+- **Cloud:** Cloud Run for the API, Cloud SQL for relational data, Cloud Storage for media later. Firebase remains the identity provider, not the business database.
 
 ## 4. Domain model
 
 The system separates canonical entities from user activity. A canonical entity is not duplicated when several users check in to it.
 
 ```text
-catalog/{entityId}
+catalog_entities/{entityId}
   kind: country | state
   code: ISO-like stable code, e.g. country:US or state:US-CA
   name: display name
   parentCode: nullable, e.g. country:US for state:US-CA
-  source: seed:iso-3166-1 | seed:us-states
+  source: iso-3166-1 | census-ansi | geonames
   sourceVersion: string
   createdAt: timestamp
   updatedAt: timestamp
 
-users/{uid}
-  profile fields
+users/{firebaseUid}
+  displayName
+  email
+  createdAt
+  updatedAt
 
-users/{uid}/checkins/{checkinId}
+user_checkins/{checkinId}
+  userId: Firebase UID
   entityId: catalog entity ID
   dimension: geography
   visitedAt: timestamp
   note: nullable string
-  location: nullable GeoPoint
+  latitude: nullable decimal
+  longitude: nullable decimal
   createdAt: timestamp
   updatedAt: timestamp
 
-users/{uid}/unlocks/{entityId}
+user_unlocks/{userId}:{entityId}
+  userId: Firebase UID
   entityId: catalog entity ID
   firstCheckedInAt: timestamp
   visitCount: integer
   updatedAt: timestamp
 ```
 
-`checkins` preserve individual visits. `unlocks` represent unique achievements and are derived from check-ins. During the first implementation, unlock updates can happen transactionally in the repository; a trusted Cloud Function can replace this later.
+`user_checkins` preserve individual visits. `user_unlocks` represent unique achievements and are derived from check-ins. The API updates both in one PostgreSQL transaction. The database, rather than the browser, owns counts and uniqueness constraints.
 
 ## 5. Stable identifiers and deduplication
 
@@ -86,9 +93,11 @@ Changing a display language must not create another achievement. A future import
 
 ## 6. Sync and conflict policy
 
-- Firestore listeners provide live updates while the user is signed in.
+- The first web demo uses normal API reads after writes.
+- The API exposes an incremental sync cursor based on `updatedAt` and a monotonic change sequence.
+- WebSocket or Server-Sent Events can be added after the basic sync contract is stable.
 - All timestamps are stored in UTC and displayed in local time.
-- Writes go through repositories, never directly from widgets.
+- Writes go through FastAPI service/repository layers, never directly from the browser to PostgreSQL.
 - The first MVP uses last-write-wins for edits, using `updatedAt`.
 - Deletes are soft deletes if delete support is added before the MVP review; otherwise deletion is deferred.
 
@@ -96,7 +105,7 @@ Changing a display language must not create another achievement. A future import
 
 - Unauthenticated users cannot read or write user data.
 - A user can only access `users/{theirUid}/...`.
-- Catalog reads are public to authenticated clients and catalog writes are restricted to trusted tooling/admins.
+- Catalog reads are available through the API; catalog writes are restricted to the import/admin job.
 - Client-provided counts are never trusted for ranking or statistics.
 - Firebase configuration files and secrets are not committed.
 
@@ -104,8 +113,9 @@ Changing a display language must not create another achievement. A future import
 
 The first seed data is versioned, reviewable JSON rather than AI-generated data:
 
-- Countries: ISO 3166-1 alpha-2 codes.
-- US states: a curated list using USPS-style two-letter codes, with the product policy explicitly stating whether DC and territories are included.
+- Countries: ISO 3166-1 alpha-2 codes, stored with a stable internal ID such as `country:US`.
+- US states: ANSI/FIPS and USPS codes from the US Census reference list, with the product policy explicitly stating whether DC and territories are included.
+- Global first-level subdivisions: add GeoNames `admin1CodesASCII` only after licensing, attribution, and normalization are reviewed.
 
 Later catalog sources should be imported into a staging collection, validated, attributed, and then promoted to the production catalog. Planned sources are UNESCO for heritage, GBIF for biodiversity, and an explicitly licensed geographic/POI source for attractions.
 
@@ -117,14 +127,15 @@ Later catalog sources should be imported into a staging collection, validated, a
 - See the two records in the list and counts of one country and one state.
 - Create another check-in for the same entity and verify the unique count stays unchanged while visit count increases.
 - Open two clients for the same account and observe the list update.
-- Verify a second account cannot read the first account's check-ins using the Firestore emulator.
-- Build and launch the Flutter app on Chrome and Android Emulator when the local SDK is installed.
+- Verify a second account cannot read the first account's check-ins through the API.
+- Run the web client and FastAPI service locally with PostgreSQL or a documented SQLite test profile.
 
 ## 10. Delivery sequence
 
 1. Commit this design and the ADRs.
-2. Initialize the Flutter project and routing shell.
-3. Add Firebase Auth and protected routes.
-4. Add catalog seed data, Firestore rules, repository, and check-in list.
-5. Add emulator/E2E coverage.
-6. Push each coherent milestone to `feat/mvp-auth-geography` and open a PR for review.
+2. Initialize the Vite web client and FastAPI service.
+3. Add Firebase Auth in the browser and ID-token verification in Python.
+4. Add PostgreSQL migrations, catalog seed data, API repository, and check-in list.
+5. Add API and browser E2E coverage.
+6. Add the Android Kotlin shell only after the web/API contract is usable.
+7. Push each coherent milestone to `feat/mvp-auth-geography` and open a PR for review.

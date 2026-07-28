@@ -1,20 +1,20 @@
-# ADR 0001: Use Flutter and Firebase for the first MVP
+# ADR 0001: Use a JavaScript web client, Python API, and Firebase Auth for the first MVP
 
 - Status: Accepted for MVP
 - Date: 2026-07-28
 
 ## Context
 
-The first release must support a web E2E demo while keeping a path to Android and iOS. The team also wants a Google Cloud deployment and rapid iteration on authentication, list data, and synchronization.
+The first release must support a web E2E demo while keeping a path to Android and iOS. The team does not want to install Flutter. The product also needs a Python backend and a relational model suitable for catalogs, deduplication, ranking, and sync.
 
 ## Decision
 
-Use Flutter for the shared client and Firebase Authentication plus Cloud Firestore for the first backend. Treat Firebase as the initial Google Cloud backend. Add Python on Cloud Run only when ingestion, AI, or server-side integrations need a custom service.
+Use a TypeScript/JavaScript Vite web client, Firebase Authentication for identity, and a Python/FastAPI API backed by PostgreSQL. Deploy the API on Cloud Run and PostgreSQL on Cloud SQL. Use Kotlin/Jetpack Compose for the later Android client, with Kotlin Multiplatform considered for shared mobile logic. Firebase is the identity provider, not the business database.
 
 ## Consequences
 
-- One client codebase covers Web, Android, and iOS.
-- Auth, security rules, real-time listeners, and local development can be validated early.
-- The MVP has less custom infrastructure to operate.
-- Flutter/Dart becomes a required production skill; Kotlin is kept as a separate learning track.
-- A future custom API can be introduced without changing the domain model if repositories remain the client boundary.
+- The web demo can be developed with the existing JavaScript ecosystem.
+- Python owns authorization, validation, transactions, and synchronization.
+- PostgreSQL gives strong uniqueness and relational queries for achievement tracking and ranking.
+- Firebase Auth avoids implementing password storage and account recovery in the Python service.
+- Android/iOS clients must follow the same versioned API contract instead of directly accessing the database.
