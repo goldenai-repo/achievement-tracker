@@ -10,9 +10,11 @@ from app.config import get_settings
 try:
     import firebase_admin
     from firebase_admin import auth as firebase_auth
+    from firebase_admin import credentials
 except ImportError:  # pragma: no cover - dependencies are installed in the API environment.
     firebase_admin = None
     firebase_auth = None
+    credentials = None
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,12 @@ def _verify_with_firebase(token: str) -> dict:
             else None
         )
         try:
-            firebase_admin.initialize_app(options=options)
+            credential = (
+                credentials.Certificate(settings.firebase_credentials_path)
+                if settings.firebase_credentials_path and credentials
+                else None
+            )
+            firebase_admin.initialize_app(credential=credential, options=options)
         except Exception as exc:  # pragma: no cover - depends on local Google credentials.
             raise HTTPException(status_code=503, detail="Firebase Admin is not configured") from exc
 
