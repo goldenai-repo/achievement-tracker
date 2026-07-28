@@ -1,6 +1,6 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, firebaseConfigured, login, logout, register } from "./firebase";
-import { getCatalog, getMe, type CatalogItem } from "./api";
+import { createCheckin, getCatalog, getMe, type CatalogItem } from "./api";
 import "./styles.css";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -177,6 +177,44 @@ function setupCatalogSearch(user: User) {
   void searchCatalog(user);
 }
 
+function setupCheckinForm(user: User) {
+  const form = document.querySelector<HTMLFormElement>("#checkin-form");
+  if (!form) return;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = document.querySelector<HTMLParagraphElement>("#checkin-status")!;
+    const submit = document.querySelector<HTMLButtonElement>("#checkin-submit")!;
+    const date = document.querySelector<HTMLInputElement>("#visited-date")!.value;
+    const note = document.querySelector<HTMLTextAreaElement>("#checkin-note")!.value.trim();
+    if (!selectedEntity) {
+      status.textContent = "Select a place before checking in.";
+      return;
+    }
+    if (!date) {
+      status.textContent = "Choose the date you visited.";
+      return;
+    }
+
+    submit.disabled = true;
+    status.textContent = "Saving...";
+    try {
+      await createCheckin(user, {
+        entity_id: selectedEntity.id,
+        visited_at: `${date}T00:00:00Z`,
+        note: note || undefined,
+      });
+      status.textContent = `Checked in: ${selectedEntity.name}`;
+      selectedEntity = null;
+      document.querySelector<HTMLParagraphElement>("#selected-entity")!.textContent = "No place selected";
+      document.querySelector<HTMLTextAreaElement>("#checkin-note")!.value = "";
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : "Unable to save check-in";
+    } finally {
+      submit.disabled = false;
+    }
+  });
+}
+
 async function renderHome(user: User) {
   root.innerHTML = `
     <main class="dashboard-shell">
@@ -221,6 +259,16 @@ async function renderHome(user: User) {
             <p class="message" id="catalog-status">Loading places...</p>
             <div id="catalog-results" class="result-list"></div>
             <p id="selected-entity" class="selected-entity">No place selected</p>
+            <form id="checkin-form">
+              <label>Visited date
+                <input id="visited-date" type="date" required />
+              </label>
+              <label>Note <span class="muted">(optional)</span>
+                <textarea id="checkin-note" rows="3" maxlength="2000" placeholder="What made this place memorable?"></textarea>
+              </label>
+              <button id="checkin-submit" type="submit">Check in</button>
+              <p class="message" id="checkin-status" role="status"></p>
+            </form>
           </div>
         </article>
         <article class="card">
@@ -232,6 +280,8 @@ async function renderHome(user: User) {
     </main>`;
   document.querySelector<HTMLButtonElement>("#logout")!.addEventListener("click", logout);
   setupCatalogSearch(user);
+  document.querySelector<HTMLInputElement>("#visited-date")!.value = new Date().toISOString().slice(0, 10);
+  setupCheckinForm(user);
   try {
     const me = await getMe(user);
     document.querySelector<HTMLParagraphElement>("#api-message")!.textContent =
