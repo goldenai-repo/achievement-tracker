@@ -48,13 +48,41 @@ async function submitAuth(email: string, password: string, action: "login" | "re
 
 async function renderHome(user: User) {
   root.innerHTML = `
-    <section class="card">
-      <p class="eyebrow">Signed in</p>
-      <h1>Welcome back.</h1>
-      <p class="muted">${user.email ?? "Authenticated user"}</p>
+    <main class="dashboard-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Achievement Tracker</p>
+          <h1>Build your map of meaningful places.</h1>
+        </div>
+        <div class="account-actions">
+          <span class="user-email">${user.email ?? "Authenticated user"}</span>
+          <button id="logout" class="secondary">Log out</button>
+        </div>
+      </header>
+
       <p class="message" id="api-message">Checking your profile with the API...</p>
-      <button id="logout" class="secondary">Log out</button>
-    </section>`;
+
+      <section class="summary-grid" aria-label="Achievement summary">
+        <article class="card summary-card"><span>Total check-ins</span><strong id="summary-checkins">—</strong></article>
+        <article class="card summary-card"><span>Unique unlocks</span><strong id="summary-unlocks">—</strong></article>
+        <article class="card summary-card"><span>Countries</span><strong id="summary-countries">—</strong></article>
+        <article class="card summary-card"><span>Admin 1 regions</span><strong id="summary-admin1">—</strong></article>
+      </section>
+
+      <section class="dashboard-grid">
+        <article class="card">
+          <p class="eyebrow">New achievement</p>
+          <h2>Record a place worth remembering.</h2>
+          <p class="muted">Search for a country or first-level administrative region, then add the day you visited.</p>
+          <div class="placeholder-panel" id="checkin-panel">Catalog search and check-in form coming next.</div>
+        </article>
+        <article class="card">
+          <p class="eyebrow">Your history</p>
+          <h2>Recent check-ins</h2>
+          <div class="placeholder-panel" id="history-panel">Your recent check-ins will appear here.</div>
+        </article>
+      </section>
+    </main>`;
   document.querySelector<HTMLButtonElement>("#logout")!.addEventListener("click", logout);
   try {
     const me = await getMe(user);
