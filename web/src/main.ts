@@ -1,9 +1,25 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, firebaseConfigured, login, logout, register } from "./firebase";
-import { getMe } from "./api";
+import { getCatalog, getMe, type CatalogItem } from "./api";
 import "./styles.css";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
+let selectedDimension: "country" | "admin1" = "country";
+let selectedParent: CatalogItem | null = null;
+let selectedEntity: CatalogItem | null = null;
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return entities[character];
+  });
+}
 
 function renderAuth(message = "") {
   root.innerHTML = `
@@ -46,6 +62,121 @@ async function submitAuth(email: string, password: string, action: "login" | "re
   }
 }
 
+function renderCatalogResults(results: CatalogItem[]) {
+  const container = document.querySelector<HTMLDivElement>("#catalog-results");
+  if (!container) return;
+  if (results.length === 0) {
+    container.innerHTML = '<p class="muted">No matching places found.</p>';
+    return;
+  }
+  container.innerHTML = results
+    .map(
+      (item) => `
+        <button class="result-item" type="button" data-catalog-id="${escapeHtml(item.id)}">
+          <span>${escapeHtml(item.name)}</span>
+          <small>${escapeHtml(item.code)}</small>
+        </button>`,
+    )
+    .join("");
+  container.querySelectorAll<HTMLButtonElement>("[data-catalog-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = results.find((result) => result.id === button.dataset.catalogId);
+      if (!item) return;
+      selectedEntity = item;
+      const selected = document.querySelector<HTMLParagraphElement>("#selected-entity");
+      if (selected) {
+        selected.innerHTML = `Selected: <strong>${escapeHtml(item.name)}</strong> <small>${escapeHtml(item.code)}</small>`;
+      }
+    });
+  });
+}
+
+async function searchCatalog(user: User) {
+  const status = document.querySelector<HTMLParagraphElement>("#catalog-status");
+  const query = document.querySelector<HTMLInputElement>("#catalog-search")?.value.trim() ?? "";
+  if (selectedDimension === "admin1" && !selectedParent) {
+    if (status) status.textContent = "Choose a country before searching its regions.";
+    renderCatalogResults([]);
+    return;
+  }
+  if (status) status.textContent = "Searching...";
+  try {
+    const results = await getCatalog(user, {
+      kind: selectedDimension,
+      q: query,
+      parentId: selectedParent?.id,
+      limit: 25,
+    });
+    renderCatalogResults(results);
+    if (status) status.textContent = `${results.length} result${results.length === 1 ? "" : "s"}`;
+  } catch (error) {
+    if (status) status.textContent = error instanceof Error ? error.message : "Catalog search failed";
+    renderCatalogResults([]);
+  }
+}
+
+async function loadParentCountries(user: User) {
+  const select = document.querySelector<HTMLSelectElement>("#parent-country");
+  if (!select) return;
+  try {
+    const countries = await getCatalog(user, { kind: "country", limit: 500 });
+    select.innerHTML = '<option value="">Choose a country</option>';
+    countries.forEach((country) => {
+      const option = document.createElement("option");
+      option.value = country.id;
+      option.textContent = country.name;
+      select.appendChild(option);
+    });
+  } catch (error) {
+    select.innerHTML = '<option value="">Unable to load countries</option>';
+    const status = document.querySelector<HTMLParagraphElement>("#catalog-status");
+    if (status) status.textContent = error instanceof Error ? error.message : "Unable to load countries";
+  }
+}
+
+function setupCatalogSearch(user: User) {
+  const dimension = document.querySelector<HTMLSelectElement>("#catalog-kind")!;
+  const parent = document.querySelector<HTMLSelectElement>("#parent-country")!;
+  const search = document.querySelector<HTMLInputElement>("#catalog-search")!;
+  const parentField = document.querySelector<HTMLLabelElement>("#parent-country-field")!;
+
+  const updateDimension = async () => {
+    selectedDimension = dimension.value as "country" | "admin1";
+    selectedParent = null;
+    selectedEntity = null;
+    parent.value = "";
+    search.value = "";
+    parentField.hidden = selectedDimension !== "admin1";
+    document.querySelector<HTMLParagraphElement>("#selected-entity")!.textContent = "No place selected";
+    if (selectedDimension === "admin1") await loadParentCountries(user);
+    await searchCatalog(user);
+  };
+
+  dimension.addEventListener("change", updateDimension);
+  parent.addEventListener("change", async () => {
+    const selectedOption = parent.options[parent.selectedIndex];
+    selectedParent = parent.value
+      ? {
+          id: parent.value,
+          kind: "country",
+          code: parent.value.replace("country:", ""),
+          name: selectedOption.textContent ?? parent.value,
+          nameAscii: selectedOption.textContent,
+          parentId: null,
+        }
+      : null;
+    selectedEntity = null;
+    document.querySelector<HTMLParagraphElement>("#selected-entity")!.textContent = "No place selected";
+    await searchCatalog(user);
+  });
+  let searchTimer: number | undefined;
+  search.addEventListener("input", () => {
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => void searchCatalog(user), 250);
+  });
+  void searchCatalog(user);
+}
+
 async function renderHome(user: User) {
   root.innerHTML = `
     <main class="dashboard-shell">
@@ -74,7 +205,23 @@ async function renderHome(user: User) {
           <p class="eyebrow">New achievement</p>
           <h2>Record a place worth remembering.</h2>
           <p class="muted">Search for a country or first-level administrative region, then add the day you visited.</p>
-          <div class="placeholder-panel" id="checkin-panel">Catalog search and check-in form coming next.</div>
+          <div id="checkin-panel">
+            <label>What are you checking in?
+              <select id="catalog-kind">
+                <option value="country">Country</option>
+                <option value="admin1">Admin 1 region</option>
+              </select>
+            </label>
+            <label id="parent-country-field" hidden>Country
+              <select id="parent-country"><option value="">Choose a country</option></select>
+            </label>
+            <label>Search places
+              <input id="catalog-search" type="search" placeholder="Try California or United States" autocomplete="off" />
+            </label>
+            <p class="message" id="catalog-status">Loading places...</p>
+            <div id="catalog-results" class="result-list"></div>
+            <p id="selected-entity" class="selected-entity">No place selected</p>
+          </div>
         </article>
         <article class="card">
           <p class="eyebrow">Your history</p>
@@ -84,6 +231,7 @@ async function renderHome(user: User) {
       </section>
     </main>`;
   document.querySelector<HTMLButtonElement>("#logout")!.addEventListener("click", logout);
+  setupCatalogSearch(user);
   try {
     const me = await getMe(user);
     document.querySelector<HTMLParagraphElement>("#api-message")!.textContent =
