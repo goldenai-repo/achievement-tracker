@@ -10,11 +10,15 @@ Most people accumulate rich life experiences but have no structured way to recor
 
 ## Features
 
+### Guest Mode First
+- The mobile app works fully without an account — achievements are stored on-device
+- Registration / login is required only to back your data up to the cloud
+- Data logged as a guest uploads automatically after the first sign-in
+
 ### Authentication
 - Email + password registration and login
-- Phone number authentication (optional)
 - Switch between multiple accounts
-- Google OAuth single sign-on (optional, advanced)
+- Phone auth and Google OAuth (planned)
 
 ### Achievement Categories
 
@@ -53,10 +57,13 @@ All records are stored in the cloud and synchronized in real time across iOS, An
 
 ## Tech Stack
 
-### Frontend
-- **Flutter** — single Dart codebase targeting iOS, Android, and web
-- **Riverpod** — state management
-- **go_router** — declarative routing
+### Mobile (iOS + Android)
+- **Kotlin Multiplatform + Compose Multiplatform** — one shared codebase for both platforms (see `docs/adr/0003-mobile-kmp-compose-firestore.md`)
+- **SQLDelight** — on-device SQLite storage (guest mode / local source of truth)
+- **GitLive firebase-kotlin-sdk** — Firebase Auth + Firestore from shared Kotlin
+
+### Web (separate MVP track)
+- **TypeScript / Vite** client with a **Python FastAPI + PostgreSQL** backend, on branch `feat/mvp-auth-geography`
 
 ### Backend
 - **Firebase Authentication** — handles all auth flows
@@ -87,19 +94,14 @@ achievement-tracker/
 │   ├── IMPLEMENTATION_PLAN.md
 │   ├── ARCHITECTURE.md
 │   └── adr/                     # Architecture Decision Records
-├── app/                         # Flutter application (iOS + Android + Web)
-│   ├── lib/
-│   │   ├── features/            # Feature-first folder structure
-│   │   │   ├── auth/
-│   │   │   ├── achievements/
-│   │   │   ├── profile/
-│   │   │   └── sync/
-│   │   ├── core/                # Shared utilities, theme, routing
-│   │   └── main.dart
-│   ├── ios/
-│   ├── android/
-│   ├── web/
-│   └── pubspec.yaml
+├── app/                         # Kotlin Multiplatform mobile app (iOS + Android)
+│   ├── composeApp/              # Shared Kotlin + Compose UI
+│   │   └── src/
+│   │       ├── commonMain/      # features/ (auth, achievements, sync), core/, ui/
+│   │       ├── androidMain/     # Android entry points + SQLite driver
+│   │       ├── iosMain/         # iOS entry points + SQLite driver
+│   │       └── commonTest/      # unit tests
+│   └── iosApp/                  # Xcode project (XcodeGen) + SwiftUI host
 ├── backend/                     # Optional App Engine API server
 │   ├── src/
 │   └── app.yaml
@@ -118,11 +120,11 @@ achievement-tracker/
 ## Getting Started
 
 ### Prerequisites
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) >= 3.x
-- [Node.js](https://nodejs.org/) >= 18 (for Firebase Functions)
-- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
-- [Firebase CLI](https://firebase.google.com/docs/cli)
-- A Google Cloud / Firebase project
+- JDK 17+ and the Android SDK (easiest via [Android Studio](https://developer.android.com/studio))
+- Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (for iOS)
+- [Firebase CLI](https://firebase.google.com/docs/cli) and a Firebase project — **optional**, only needed for cloud sync
+
+See [`docs/MOBILE_SETUP.md`](docs/MOBILE_SETUP.md) for the full mobile guide.
 
 ### Setup Steps
 
@@ -133,20 +135,19 @@ See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the full st
 4. GitHub and Git CLI configuration
 5. Local development environment
 
-### Quick Start (after full setup)
+### Quick Start
 
 ```bash
-# Install Flutter dependencies
-cd app && flutter pub get
+# Android: build + install the debug APK (guest mode works out of the box)
+cd app
+./gradlew :composeApp:assembleDebug
+adb install composeApp/build/outputs/apk/debug/composeApp-debug.apk
 
-# Start Firebase emulators locally
-firebase emulators:start
-
-# Run the app on web (development)
-cd app && flutter run -d chrome
-
-# Run on a connected device/simulator
-cd app && flutter run
+# iOS: generate the Xcode project, then run from Xcode or the CLI
+cd app/iosApp
+xcodegen generate
+xcodebuild -project iosApp.xcodeproj -scheme iosApp \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build CODE_SIGNING_ALLOWED=NO
 ```
 
 ---

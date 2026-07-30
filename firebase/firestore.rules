@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// Users can only touch their own documents; every write is validated against
+// the achievement type registry (see CLAUDE.md).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/achievements/{achievementId} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validAchievement();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validAchievement() {
+      let d = request.resource.data;
+      return d.type in [
+          'geography.country', 'geography.state', 'geography.city',
+          'wildlife.animal', 'wildlife.plant',
+          'culture.museum',
+          'entertainment.movie',
+          'culinary.michelin',
+          'heritage.unesco'
+        ]
+        && d.timestamp is timestamp
+        && d.createdAt is timestamp
+        && d.updatedAt is timestamp
+        && d.content is string && d.content.size() > 0 && d.content.size() <= 500
+        && (!('location' in d) || d.location == null || d.location is latlng)
+        && (!('deleted' in d) || d.deleted is bool);
+    }
+  }
+}
