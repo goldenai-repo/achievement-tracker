@@ -79,6 +79,10 @@ def create_checkin(db: Session, current_user: CurrentUser, payload: CheckInCreat
 
 
 def serialize_checkin(checkin: UserCheckin, entity: Optional[CatalogEntity]) -> dict:
+    # SQLite can return timezone-aware columns as naive datetimes. Normalize
+    # every API timestamp to an explicit UTC ISO-8601 value for mobile clients.
+    visited_at = _utc(checkin.visited_at).isoformat().replace("+00:00", "Z")
+    created_at = _utc(checkin.created_at).isoformat().replace("+00:00", "Z")
     return {
         "id": checkin.id,
         "entityId": checkin.entity_id,
@@ -93,11 +97,11 @@ def serialize_checkin(checkin: UserCheckin, entity: Optional[CatalogEntity]) -> 
             if entity
             else None
         ),
-        "visitedAt": checkin.visited_at.isoformat(),
+        "visitedAt": visited_at,
         "note": checkin.note,
         "latitude": checkin.latitude,
         "longitude": checkin.longitude,
-        "createdAt": checkin.created_at.isoformat(),
+        "createdAt": created_at,
     }
 
 

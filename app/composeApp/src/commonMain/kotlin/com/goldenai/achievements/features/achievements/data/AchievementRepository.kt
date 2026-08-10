@@ -1,0 +1,232 @@
+package com.goldenai.achievements.features.achievements.data
+
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOne
+import com.goldenai.achievements.core.AppResult
+import com.goldenai.achievements.core.formatIsoUtc
+import com.goldenai.achievements.core.nowEpochMillis
+import com.goldenai.achievements.core.parseIsoUtc
+import com.goldenai.achievements.core.randomUuid
+import com.goldenai.achievements.core.runCatchingSuspendResult
+import com.goldenai.achievements.core.model.Achievement
+import com.goldenai.achievements.db.AchievementDatabase
+import com.goldenai.achievements.db.AchievementEntity
+import com.goldenai.achievements.features.api.AchievementApi
+import com.goldenai.achievements.features.api.CatalogPlace
+import com.goldenai.achievements.features.api.CheckInRequest
+import com.goldenai.achievements.features.api.CheckInResponse
+import com.goldenai.achievements.features.auth.data.AuthRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+
+/**
+ * Local SQLite is the source of truth for the UI. Authenticated writes go to
+ * FastAPI first and are then cached locally; guest writes remain pending until
+ * a future sync run can upload them.
+ */
+class AchievementRepository(
+    private val db: AchievementDatabase,
+    private val api: AchievementApi,
+    private val auth: AuthRepository,
+) {
+    private val q = db.achievementQueries
+    private val _summary = MutableStateFlow<com.goldenai.achievements.features.api.SummaryResponse?>(null)
+    val summary: StateFlow<com.goldenai.achievements.features.api.SummaryResponse?> = _summary.asStateFlow()
+
+    fun watchAll(): Flow<List<Achievement>> =
+        q.selectAll().asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map { it.toModel() } }
+
+    fun watchByType(type: String): Flow<List<Achievement>> =
+        q.selectByType(type).asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map { it.toModel() } }
+
+    fun watchRecent(limit: Long): Flow<List<Achievement>> =
+        q.selectRecent(limit).asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map { it.toModel() } }
+
+    fun watchCountsByType(): Flow<Map<String, Long>> =
+        q.countsByType().asFlow().mapToList(Dispatchers.Default)
+            .map { rows -> rows.associate { it.type to it.cnt } }
+
+    fun watchPendingCount(): Flow<Long> =
+        q.countPending().asFlow().mapToOne(Dispatchers.Default)
+
+    suspend fun get(id: String): Achievement? = withContext(Dispatchers.Default) {
+        q.selectById(id).executeAsOneOrNull()?.toModel()
+    }
+
+    suspend fun refresh(): AppResult<Unit> = runCatchingSuspendResult("Could not load check-ins") {
+        val uid = auth.currentUser?.uid
+        if (uid != null) prepareAccount(uid)
+        val remote = api.listCheckins()
+        withContext(Dispatchers.Default) {
+            db.transaction {
+                remote.forEach { response -> upsertLocal(response, pendingSync = 0) }
+            }
+        }
+        try {
+            _summary.value = api.summary()
+        } catch (_: Throwable) {
+            // The history is still useful if the optional summary request fails.
+        }
+        if (uid != null) withContext(Dispatchers.Default) { q.setMeta("lastSyncedUid", uid) }
+    }
+
+    suspend fun create(
+        place: CatalogPlace,
+        timestamp: Long,
+        notes: String?,
+    ): AppResult<Achievement> {
+        val request = CheckInRequest(
+            entityId = place.id,
+            visitedAt = formatIsoUtc(timestamp),
+            note = notes?.takeIf { it.isNotBlank() },
+        )
+        val result = if (auth.currentUser != null) {
+            runCatchingSuspendResult("Could not create check-in") { api.createCheckIn(request) }
+        } else {
+            AppResult.Ok(null)
+        }
+
+        return when (result) {
+            is AppResult.Ok -> {
+                val achievement = result.value?.let { response ->
+                    withContext(Dispatchers.Default) {
+                        upsertLocal(response, pendingSync = 0)
+                        response.toModel()
+                    }
+                } ?: withContext(Dispatchers.Default) {
+                    val local = Achievement(
+                        id = randomUuid(),
+                        entityId = place.id,
+                        entityKind = place.kind,
+                        entityCode = place.code,
+                        parentId = place.parentId,
+                        type = place.toAchievementType(),
+                        timestamp = timestamp,
+                        locationName = place.name,
+                        content = place.name,
+                        notes = notes?.takeIf { it.isNotBlank() },
+                        createdAt = nowEpochMillis(),
+                        updatedAt = nowEpochMillis(),
+                    )
+                    upsertLocal(local, pendingSync = 1)
+                    local
+                }
+                AppResult.Ok(achievement)
+            }
+            is AppResult.Err -> result
+        }
+    }
+
+    /** Uploads local guest rows one at a time using the existing API contract. */
+    suspend fun sync(): AppResult<Unit> {
+        if (auth.currentUser == null) return AppResult.Ok(Unit)
+        return runCatchingSuspendResult("Could not sync check-ins") {
+            val pending = withContext(Dispatchers.Default) { q.selectPending().executeAsList() }
+            pending.forEach { row ->
+                val response = api.createCheckIn(
+                    CheckInRequest(
+                        entityId = row.entityId,
+                        visitedAt = formatIsoUtc(row.timestamp),
+                        note = row.notes,
+                        latitude = row.latitude,
+                        longitude = row.longitude,
+                    ),
+                )
+                withContext(Dispatchers.Default) {
+                    db.transaction {
+                        q.deleteById(row.id)
+                        upsertLocal(response, pendingSync = 0)
+                    }
+                }
+            }
+            refresh()
+            Unit
+        }
+    }
+
+    private fun upsertLocal(response: CheckInResponse, pendingSync: Long) {
+        val place = response.entity ?: CatalogPlace(
+            id = response.entityId,
+            kind = "country",
+            code = response.entityId.removePrefix("country:"),
+            name = response.entityId,
+        )
+        upsertLocal(response.toModel(place), pendingSync)
+    }
+
+    private fun upsertLocal(achievement: Achievement, pendingSync: Long) {
+        q.upsert(
+            id = achievement.id,
+            entityId = achievement.entityId,
+            entityKind = achievement.entityKind,
+            entityCode = achievement.entityCode,
+            parentId = achievement.parentId,
+            type = achievement.type,
+            subtype = achievement.subtype,
+            timestamp = achievement.timestamp,
+            latitude = achievement.latitude,
+            longitude = achievement.longitude,
+            locationName = achievement.locationName,
+            content = achievement.content,
+            notes = achievement.notes,
+            mediaUrl = achievement.mediaUrl,
+            createdAt = achievement.createdAt,
+            updatedAt = achievement.updatedAt,
+            deleted = 0,
+            pendingSync = pendingSync,
+        )
+    }
+
+    private suspend fun prepareAccount(uid: String) = withContext(Dispatchers.Default) {
+        val lastUid = q.getMeta("lastSyncedUid").executeAsOneOrNull()
+        if (lastUid != null && lastUid != uid) q.deleteSynced()
+    }
+}
+
+private fun CheckInResponse.toModel(place: CatalogPlace = entity ?: error("Missing catalog entity")): Achievement = Achievement(
+    id = id,
+    entityId = entityId,
+    entityKind = place.kind,
+    entityCode = place.code,
+    parentId = place.parentId,
+    type = place.toAchievementType(),
+    timestamp = parseIsoUtc(visitedAt),
+    locationName = place.name,
+    content = place.name,
+    notes = note,
+    latitude = latitude,
+    longitude = longitude,
+    createdAt = parseIsoUtc(createdAt),
+    updatedAt = parseIsoUtc(createdAt),
+)
+
+private fun CatalogPlace.toAchievementType(): String = when (kind) {
+    "country" -> "geography.country"
+    "admin1" -> "geography.state"
+    else -> "geography.city"
+}
+
+fun AchievementEntity.toModel(): Achievement = Achievement(
+    id = id,
+    entityId = entityId,
+    entityKind = entityKind,
+    entityCode = entityCode,
+    parentId = parentId,
+    type = type,
+    subtype = subtype,
+    timestamp = timestamp,
+    latitude = latitude,
+    longitude = longitude,
+    locationName = locationName,
+    content = content,
+    notes = notes,
+    mediaUrl = mediaUrl,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
