@@ -15,6 +15,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,6 +30,8 @@ import com.goldenai.achievements.di.AppGraph
 @Composable
 fun HomeScreen(
     onBackupClick: () -> Unit,
+    onOpenLog: () -> Unit,
+    onCategoryClick: (String) -> Unit,
 ) {
     val vm: HomeViewModel = viewModel { HomeViewModel(AppGraph.achievements) }
     val counts by vm.counts.collectAsState()
@@ -38,16 +41,26 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 16.dp,
+            top = 16.dp,
+            end = 16.dp,
+            bottom = 112.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Achievements", style = MaterialTheme.typography.headlineMedium)
-            Text(
-                "${summary?.checkinCount ?: counts.values.sum()} logged so far",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Achievements", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "${summary?.checkinCount ?: counts.values.sum()} logged so far",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onOpenLog) { Text("View full log") }
+            }
         }
 
         if (AppGraph.cloudAvailable && user == null) {
@@ -76,6 +89,7 @@ fun HomeScreen(
                     CategoryCard(
                         type = type,
                         count = counts[type.key] ?: 0L,
+                        onClick = { onCategoryClick(type.key) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -110,9 +124,10 @@ fun HomeScreen(
 private fun CategoryCard(
     type: AchievementType,
     count: Long,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier = modifier) {
+    Card(onClick = onClick, modifier = modifier) {
         Column(Modifier.padding(14.dp)) {
             Text(type.emoji, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(6.dp))

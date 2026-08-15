@@ -9,6 +9,7 @@ from pathlib import Path
 
 BASE_URL = "https://download.geonames.org/export/dump"
 FILES = ("countryInfo.txt", "admin1CodesASCII.txt", "readme.txt")
+COORDINATE_FILES = ("allCountries.zip",)
 
 
 def sha256(path: Path) -> str:
@@ -37,11 +38,17 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("../data/raw/geonames"))
     parser.add_argument("--source-version", required=True)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--include-coordinates",
+        action="store_true",
+        help="Also download GeoNames allCountries.zip for latitude/longitude enrichment",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     results = []
-    for filename in FILES:
+    filenames = FILES + (COORDINATE_FILES if args.include_coordinates else ())
+    for filename in filenames:
         destination = args.output_dir / filename
         result = download_file(f"{BASE_URL}/{filename}", destination, args.force)
         result.update(

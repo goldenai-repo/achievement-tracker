@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
-from app.catalog import parse_admin1, parse_country_info, upsert_catalog_records
+from app.catalog import (
+    parse_admin1,
+    parse_country_info,
+    parse_geonames_coordinates,
+    upsert_catalog_records,
+)
 from app.db import SessionLocal, init_db
 
 
@@ -13,6 +19,11 @@ def main() -> None:
     parser.add_argument("--input-dir", type=Path, default=Path("../data/raw/geonames"))
     parser.add_argument("--source-version", required=True)
     parser.add_argument("--report", type=Path, default=Path("../data/reports/geonames-import.json"))
+    parser.add_argument(
+        "--coordinates-file",
+        type=Path,
+        help="Optional allCountries.zip or allCountries.txt used to enrich catalog coordinates",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
@@ -23,6 +34,33 @@ def main() -> None:
     country_codes = {record.code for record in countries}
     admin1, rejected = parse_admin1(admin1_path, args.source_version, country_codes)
     records = countries + admin1
+
+    coordinates_path = args.coordinates_file
+    if coordinates_path is None:
+        for candidate in (args.input_dir / "allCountries.zip", args.input_dir / "allCountries.txt"):
+            if candidate.exists():
+                coordinates_path = candidate
+                break
+
+    coordinate_count = 0
+    coordinate_match_count = 0
+    if coordinates_path is not None:
+        if not coordinates_path.exists():
+            raise SystemExit(f"coordinates file not found: {coordinates_path}")
+        coordinate_ids = {record.source_id for record in records}
+        coordinates = parse_geonames_coordinates(coordinates_path, coordinate_ids)
+        coordinate_match_count = len(coordinates)
+        records = [
+            replace(
+                record,
+                latitude=coordinates.get(record.source_id, (None, None))[0],
+                longitude=coordinates.get(record.source_id, (None, None))[1],
+            )
+            for record in records
+        ]
+        coordinate_count = sum(
+            record.latitude is not None and record.longitude is not None for record in records
+        )
 
     seen_ids: set[str] = set()
     duplicate_ids: list[str] = []
@@ -52,6 +90,9 @@ def main() -> None:
         "updated": updated,
         "rejected_count": len(rejected),
         "rejected_examples": rejected[:100],
+        "coordinates_file": str(coordinates_path) if coordinates_path else None,
+        "coordinate_source_matches": coordinate_match_count,
+        "records_with_coordinates": coordinate_count,
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

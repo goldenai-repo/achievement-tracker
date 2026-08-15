@@ -1,17 +1,25 @@
+import json
+from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser, get_current_user
+from app.boundaries import geojson_bounds
 from app.checkins import (
     CheckInCreate,
+    CheckInUpdate,
     create_checkin,
+    delete_checkin,
     get_summary,
+    list_achievements,
     list_checkins,
     serialize_checkin,
+    update_checkin,
 )
 from app.config import get_settings
 from app.db import CatalogEntity, get_db, init_db, upsert_user
@@ -23,7 +31,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["DELETE", "GET", "PATCH", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -36,6 +44,23 @@ def startup() -> None:
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/v1/boundaries/{asset_name}", name="get_boundary")
+def get_boundary(asset_name: str) -> FileResponse:
+    """Serve public, non-user-specific GeoJSON boundary assets.
+
+    MapLibre's remote GeoJSON source cannot attach the app's bearer token, so
+    boundary files are deliberately separated from authenticated catalog and
+    check-in data. The asset directory is configured outside the repository in
+    production and should contain only reviewed boundary files.
+    """
+    if Path(asset_name).name != asset_name or not asset_name.endswith(".geojson"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Boundary not found")
+    path = Path(settings.boundary_data_dir) / asset_name
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Boundary not found")
+    return FileResponse(path, media_type="application/geo+json")
 
 
 @app.get("/v1/me")
@@ -62,6 +87,7 @@ def get_me(
 def get_catalog(
     _: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    request: Request,
     kind: str = Query(default="country"),
     q: Optional[str] = Query(default=None, max_length=100),
     parent_id: Optional[str] = Query(default=None, max_length=160),
@@ -96,9 +122,50 @@ def get_catalog(
             "name": entity.name,
             "nameAscii": entity.name_ascii,
             "parentId": entity.parent_id,
+            "latitude": entity.latitude,
+            "longitude": entity.longitude,
+            "boundaryGeoJsonUrl": entity.metadata_json.get("boundary_geojson_url")
+            or _local_boundary_url(request, entity),
+            "bounds": _local_boundary_bounds(entity),
         }
         for entity in entities
     ]
+
+
+def _local_boundary_url(request: Request, entity: CatalogEntity) -> Optional[str]:
+    asset_name = _boundary_asset_name(entity)
+    if asset_name is None:
+        return None
+    if not (Path(settings.boundary_data_dir) / asset_name).is_file():
+        return None
+    return str(request.url_for("get_boundary", asset_name=asset_name))
+
+
+def _boundary_asset_name(entity: CatalogEntity) -> Optional[str]:
+    if entity.kind == "country":
+        return f"{entity.code.lower()}-admin1.geojson"
+    if entity.kind == "admin1" and entity.parent_id:
+        country_code = entity.parent_id.removeprefix("country:")
+        if country_code:
+            return f"{country_code.lower()}-admin1.geojson"
+    return None
+
+
+def _local_boundary_bounds(entity: CatalogEntity) -> Optional[dict[str, float]]:
+    asset_name = _boundary_asset_name(entity)
+    if asset_name is None:
+        return None
+    path = Path(settings.boundary_data_dir) / asset_name
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        return geojson_bounds(
+            document,
+            catalog_id=entity.id if entity.kind == "admin1" else None,
+        )
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 @app.get("/v1/checkins")
@@ -110,6 +177,15 @@ def get_checkins(
     return list_checkins(db, current_user.uid, limit)
 
 
+@app.get("/v1/achievements")
+def get_achievements(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = Query(default=50, ge=1, le=100),
+) -> list[dict]:
+    return list_achievements(db, current_user.uid, limit)
+
+
 @app.post("/v1/checkins", status_code=status.HTTP_201_CREATED)
 def post_checkin(
     payload: CheckInCreate,
@@ -117,6 +193,27 @@ def post_checkin(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     checkin = create_checkin(db, current_user, payload)
+    entity = db.get(CatalogEntity, checkin.entity_id)
+    return serialize_checkin(checkin, entity)
+
+
+@app.delete("/v1/checkins/{checkin_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_checkin(
+    checkin_id: str,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    delete_checkin(db, current_user, checkin_id)
+
+
+@app.patch("/v1/checkins/{checkin_id}")
+def patch_checkin(
+    checkin_id: str,
+    payload: CheckInUpdate,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    checkin = update_checkin(db, current_user, checkin_id, payload)
     entity = db.get(CatalogEntity, checkin.entity_id)
     return serialize_checkin(checkin, entity)
 

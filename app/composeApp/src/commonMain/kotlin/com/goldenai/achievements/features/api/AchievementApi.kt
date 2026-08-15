@@ -5,6 +5,14 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class CatalogBounds(
+    val north: Double,
+    val south: Double,
+    val east: Double,
+    val west: Double,
+)
+
+@Serializable
 data class CatalogPlace(
     val id: String,
     val kind: String,
@@ -12,6 +20,10 @@ data class CatalogPlace(
     val name: String,
     val nameAscii: String? = null,
     val parentId: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val boundaryGeoJsonUrl: String? = null,
+    val bounds: CatalogBounds? = null,
 )
 
 @Serializable
@@ -21,6 +33,12 @@ data class CheckInRequest(
     val note: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
+)
+
+@Serializable
+data class CheckInUpdateRequest(
+    @SerialName("visited_at") val visitedAt: String,
+    val note: String? = null,
 )
 
 @Serializable
@@ -42,10 +60,33 @@ data class SummaryResponse(
     val byKind: Map<String, Int> = emptyMap(),
 )
 
+@Serializable
+data class MeResponse(
+    val uid: String,
+    val email: String? = null,
+    val displayName: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+)
+
+@Serializable
+data class AchievementGroupResponse(
+    val entityId: String,
+    val entity: CatalogPlace? = null,
+    val visitCount: Int,
+    val firstVisitedAt: String,
+    val lastVisitedAt: String,
+    val checkins: List<CheckInResponse> = emptyList(),
+)
+
 interface AchievementApi {
+    suspend fun getMe(): MeResponse
     suspend fun searchCatalog(kind: String, query: String?, parentId: String? = null, limit: Int = 25): List<CatalogPlace>
     suspend fun listCheckins(limit: Int = 50): List<CheckInResponse>
+    suspend fun listAchievements(limit: Int = 50): List<AchievementGroupResponse>
     suspend fun createCheckIn(request: CheckInRequest): CheckInResponse
+    suspend fun updateCheckIn(checkinId: String, request: CheckInUpdateRequest): CheckInResponse
+    suspend fun deleteCheckIn(checkinId: String)
     suspend fun summary(): SummaryResponse
 }
 

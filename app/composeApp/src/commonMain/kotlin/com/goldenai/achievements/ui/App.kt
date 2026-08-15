@@ -19,9 +19,10 @@ import androidx.navigation.toRoute
 import com.goldenai.achievements.features.achievements.presentation.CheckInFormScreen
 import com.goldenai.achievements.features.achievements.presentation.HomeScreen
 import com.goldenai.achievements.features.achievements.presentation.ListScreen
-import com.goldenai.achievements.features.auth.presentation.AccountScreen
 import com.goldenai.achievements.features.auth.presentation.RegisterScreen
 import com.goldenai.achievements.features.auth.presentation.SignInScreen
+import com.goldenai.achievements.features.map.ExploreScreen
+import com.goldenai.achievements.features.profile.presentation.ProfileScreen
 import com.goldenai.achievements.ui.theme.AppTheme
 import kotlinx.serialization.Serializable
 
@@ -30,6 +31,9 @@ object HomeRoute
 
 @Serializable
 data class ListRoute(val typeKey: String? = null)
+
+@Serializable
+object ExploreRoute
 
 @Serializable
 object AccountRoute
@@ -52,8 +56,9 @@ fun App() {
 
         val onHome = destination?.hasRoute<HomeRoute>() == true
         val onList = destination?.hasRoute<ListRoute>() == true
+        val onExplore = destination?.hasRoute<ExploreRoute>() == true
         val onAccount = destination?.hasRoute<AccountRoute>() == true
-        val onTab = onHome || onList || onAccount
+        val onTab = onHome || onList || onExplore || onAccount
 
         fun navigateToTab(route: Any) {
             navController.navigate(route) {
@@ -62,6 +67,17 @@ fun App() {
                 popUpTo<HomeRoute> { saveState = true }
                 launchSingleTop = true
                 restoreState = true
+            }
+        }
+
+        // A Home card carries an explicit Log filter. Do not restore the
+        // existing ListRoute here: restoring it also restores its old
+        // ViewModel state (usually All) and silently discards the new filter.
+        fun navigateToList(typeKey: String? = null) {
+            navController.navigate(ListRoute(typeKey)) {
+                popUpTo<HomeRoute> { saveState = true }
+                launchSingleTop = false
+                restoreState = false
             }
         }
 
@@ -82,10 +98,16 @@ fun App() {
                             label = { Text("Log") },
                         )
                         NavigationBarItem(
+                            selected = onExplore,
+                            onClick = { navigateToTab(ExploreRoute) },
+                            icon = { Text("🗺️") },
+                            label = { Text("Explore") },
+                        )
+                        NavigationBarItem(
                             selected = onAccount,
                             onClick = { navigateToTab(AccountRoute) },
                             icon = { Text("👤") },
-                            label = { Text("Account") },
+                            label = { Text("Profile") },
                         )
                     }
                 }
@@ -106,19 +128,31 @@ fun App() {
                 composable<HomeRoute> {
                     HomeScreen(
                         onBackupClick = { navigateToTab(AccountRoute) },
+                        onOpenLog = { navigateToList() },
+                        onCategoryClick = { typeKey ->
+                            val filter = if (typeKey.startsWith("geography.")) {
+                                "geography"
+                            } else {
+                                typeKey.substringBefore('.')
+                            }
+                            navigateToList(filter)
+                        },
                     )
                 }
                 composable<ListRoute> { entry ->
                     val route = entry.toRoute<ListRoute>()
                     ListScreen(
                         initialType = route.typeKey,
-                        onItemClick = { id -> navController.navigate(FormRoute(id)) },
                     )
                 }
+                composable<ExploreRoute> {
+                    ExploreScreen()
+                }
                 composable<AccountRoute> {
-                    AccountScreen(
+                    ProfileScreen(
                         onSignIn = { navController.navigate(SignInRoute) },
                         onRegister = { navController.navigate(RegisterRoute) },
+                        onViewLog = { navigateToList() },
                     )
                 }
                 composable<FormRoute> {

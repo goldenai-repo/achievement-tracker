@@ -36,6 +36,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.sqldelight.android.driver)
+            implementation(libs.maplibre.android)
         }
     }
 }
@@ -65,6 +66,11 @@ android {
                 "API_BASE_URL",
                 "\"${project.findProperty("API_BASE_URL") ?: "http://10.0.2.2:8000"}\"",
             )
+            buildConfigField(
+                "String",
+                "MAP_STYLE_URL",
+                "\"${project.findProperty("MAP_STYLE_URL") ?: "https://tiles.openfreemap.org/styles/bright"}\"",
+            )
         }
         release {
             isMinifyEnabled = false
@@ -72,6 +78,11 @@ android {
                 "String",
                 "API_BASE_URL",
                 "\"${project.findProperty("API_BASE_URL") ?: "https://api.example.com"}\"",
+            )
+            buildConfigField(
+                "String",
+                "MAP_STYLE_URL",
+                "\"${project.findProperty("MAP_STYLE_URL") ?: "https://tiles.openfreemap.org/styles/bright"}\"",
             )
         }
     }

@@ -16,6 +16,7 @@ import com.goldenai.achievements.features.api.AchievementApi
 import com.goldenai.achievements.features.api.CatalogPlace
 import com.goldenai.achievements.features.api.CheckInRequest
 import com.goldenai.achievements.features.api.CheckInResponse
+import com.goldenai.achievements.features.api.CheckInUpdateRequest
 import com.goldenai.achievements.features.auth.data.AuthRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +56,12 @@ class AchievementRepository(
     fun watchPendingCount(): Flow<Long> =
         q.countPending().asFlow().mapToOne(Dispatchers.Default)
 
+    fun watchCountAll(): Flow<Long> =
+        q.countAll().asFlow().mapToOne(Dispatchers.Default)
+
+    fun watchUniqueEntityCount(): Flow<Long> =
+        q.countUniqueEntities().asFlow().mapToOne(Dispatchers.Default)
+
     suspend fun get(id: String): Achievement? = withContext(Dispatchers.Default) {
         q.selectById(id).executeAsOneOrNull()?.toModel()
     }
@@ -85,6 +92,8 @@ class AchievementRepository(
             entityId = place.id,
             visitedAt = formatIsoUtc(timestamp),
             note = notes?.takeIf { it.isNotBlank() },
+            latitude = place.latitude,
+            longitude = place.longitude,
         )
         val result = if (auth.currentUser != null) {
             runCatchingSuspendResult("Could not create check-in") { api.createCheckIn(request) }
@@ -123,25 +132,109 @@ class AchievementRepository(
         }
     }
 
+    /** Deletes one visit locally immediately and queues a server delete when needed. */
+    suspend fun delete(id: String): AppResult<Unit> {
+        val row = withContext(Dispatchers.Default) { q.selectById(id).executeAsOneOrNull() }
+            ?: return AppResult.Err("Check-in not found")
+
+        // A guest row has never reached the server, so removing it locally is enough.
+        if (row.pendingSync == 1L) {
+            withContext(Dispatchers.Default) { q.deleteById(id) }
+            return AppResult.Ok(Unit)
+        }
+
+        if (auth.currentUser == null) {
+            return AppResult.Err("Sign in before deleting a synced check-in.")
+        }
+
+        return when (val result = runCatchingSuspendResult("Could not delete check-in") {
+            api.deleteCheckIn(id)
+        }) {
+            is AppResult.Ok -> {
+                withContext(Dispatchers.Default) { q.deleteById(id) }
+                // Refresh the remote summary so Home and Profile immediately reflect
+                // a place that may have lost its final visit.
+                refresh()
+                AppResult.Ok(Unit)
+            }
+            is AppResult.Err -> {
+                // Hide it now and retry the DELETE during the next sync.
+                withContext(Dispatchers.Default) {
+                    q.markDeleted(updatedAt = nowEpochMillis(), id = id)
+                }
+                AppResult.Ok(Unit)
+            }
+        }
+    }
+
+    /** Updates only the visit date and note; the catalog place remains fixed. */
+    suspend fun update(id: String, timestamp: Long, notes: String?): AppResult<Achievement> {
+        val row = withContext(Dispatchers.Default) { q.selectById(id).executeAsOneOrNull() }
+            ?: return AppResult.Err("Check-in not found")
+        val normalizedNotes = notes?.takeIf { it.isNotBlank() }
+
+        // Guest records have not reached the server yet. Updating the local
+        // create payload is enough; the next sync will upload the latest data.
+        if (row.pendingSync == 1L) {
+            withContext(Dispatchers.Default) {
+                q.updateDetails(
+                    timestamp = timestamp,
+                    notes = normalizedNotes,
+                    updatedAt = nowEpochMillis(),
+                    id = id,
+                )
+            }
+            return get(id)?.let { AppResult.Ok(it) }
+                ?: AppResult.Err("Could not update local check-in")
+        }
+
+        if (auth.currentUser == null) {
+            return AppResult.Err("Sign in before editing a synced check-in.")
+        }
+
+        return when (val result = runCatchingSuspendResult("Could not update check-in") {
+            api.updateCheckIn(
+                id,
+                CheckInUpdateRequest(
+                    visitedAt = formatIsoUtc(timestamp),
+                    note = normalizedNotes,
+                ),
+            )
+        }) {
+            is AppResult.Ok -> {
+                withContext(Dispatchers.Default) {
+                    upsertLocal(result.value, pendingSync = 0)
+                    result.value.toModel()
+                }.let { AppResult.Ok(it) }
+            }
+            is AppResult.Err -> result
+        }
+    }
+
     /** Uploads local guest rows one at a time using the existing API contract. */
     suspend fun sync(): AppResult<Unit> {
         if (auth.currentUser == null) return AppResult.Ok(Unit)
         return runCatchingSuspendResult("Could not sync check-ins") {
             val pending = withContext(Dispatchers.Default) { q.selectPending().executeAsList() }
             pending.forEach { row ->
-                val response = api.createCheckIn(
-                    CheckInRequest(
-                        entityId = row.entityId,
-                        visitedAt = formatIsoUtc(row.timestamp),
-                        note = row.notes,
-                        latitude = row.latitude,
-                        longitude = row.longitude,
-                    ),
-                )
-                withContext(Dispatchers.Default) {
-                    db.transaction {
-                        q.deleteById(row.id)
-                        upsertLocal(response, pendingSync = 0)
+                if (row.deleted == 1L) {
+                    api.deleteCheckIn(row.id)
+                    withContext(Dispatchers.Default) { q.deleteById(row.id) }
+                } else {
+                    val response = api.createCheckIn(
+                        CheckInRequest(
+                            entityId = row.entityId,
+                            visitedAt = formatIsoUtc(row.timestamp),
+                            note = row.notes,
+                            latitude = row.latitude,
+                            longitude = row.longitude,
+                        ),
+                    )
+                    withContext(Dispatchers.Default) {
+                        db.transaction {
+                            q.deleteById(row.id)
+                            upsertLocal(response, pendingSync = 0)
+                        }
                     }
                 }
             }
@@ -200,8 +293,8 @@ private fun CheckInResponse.toModel(place: CatalogPlace = entity ?: error("Missi
     locationName = place.name,
     content = place.name,
     notes = note,
-    latitude = latitude,
-    longitude = longitude,
+    latitude = latitude ?: place.latitude,
+    longitude = longitude ?: place.longitude,
     createdAt = parseIsoUtc(createdAt),
     updatedAt = parseIsoUtc(createdAt),
 )

@@ -8,19 +8,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -41,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goldenai.achievements.core.formatDate
 import com.goldenai.achievements.di.AppGraph
 import com.goldenai.achievements.features.api.CatalogPlace
+import com.goldenai.achievements.features.catalog.CatalogPickerField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,45 +69,73 @@ fun CheckInFormScreen(onDone: () -> Unit) {
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = !vm.admin1Mode,
-                onClick = { vm.setMode(false) },
-                label = { Text("Country") },
+        if (vm.selectedCountry == null) {
+            Text(
+                "Choose a country",
+                style = MaterialTheme.typography.titleMedium,
             )
-            FilterChip(
-                selected = vm.admin1Mode,
-                onClick = { vm.setMode(true) },
-                label = { Text("State / province") },
+            CatalogPickerField(
+                value = vm.countryQuery,
+                label = "Search country",
+                open = vm.countryDropdownOpen,
+                loading = vm.countryLoading,
+                places = vm.countries,
+                enabled = apiReady,
+                onValueChange = vm::updateCountryQuery,
+                onFocus = vm::onCountryFocused,
+                onClear = vm::clearCountryQuery,
+                onDismiss = vm::dismissDropdowns,
+                onSelect = vm::chooseCountry,
             )
-        }
+        } else {
+            TextButton(onClick = vm::changeCountry) { Text("‹ Change country") }
+            Text("Choose a country", style = MaterialTheme.typography.titleMedium)
+            CatalogPickerField(
+                value = vm.countryQuery,
+                label = "Search country",
+                open = vm.countryDropdownOpen,
+                loading = vm.countryLoading,
+                places = vm.countries,
+                enabled = apiReady,
+                onValueChange = vm::updateCountryQuery,
+                onFocus = vm::onCountryFocused,
+                onClear = vm::clearCountryQuery,
+                onDismiss = vm::dismissDropdowns,
+                onSelect = vm::chooseCountry,
+            )
 
-        SearchField(
-            value = vm.countryQuery,
-            label = if (vm.admin1Mode) "Search country" else "Search country",
-            onValueChange = { vm.countryQuery = it },
-            onSearch = vm::searchCountries,
-            enabled = apiReady,
-            searching = vm.searching && vm.countries.isEmpty(),
-        )
-        PlaceResults(vm.countries, onSelect = vm::chooseCountry)
-
-        if (vm.admin1Mode) {
-            vm.selectedCountry?.let { country ->
-                SelectedPlaceCard("Country", country)
+            if (vm.countryHasRegions) {
+                Text(
+                    "This country has first-level administrative regions. Choose one to continue.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            SearchField(
-                value = vm.regionQuery,
-                label = "Search state or province",
-                onValueChange = { vm.regionQuery = it },
-                onSearch = vm::searchRegions,
-                enabled = apiReady && vm.selectedCountry != null,
-                searching = vm.searching && vm.regions.isEmpty() && vm.selectedCountry != null,
-            )
-            PlaceResults(vm.regions, onSelect = vm::chooseRegion)
+
+            if (vm.countryHasRegions) {
+                Text("Choose a state or province", style = MaterialTheme.typography.titleMedium)
+                SearchField(
+                    value = vm.regionQuery,
+                    label = "Search state or province",
+                    open = vm.regionDropdownOpen,
+                    loading = vm.regionLoading,
+                    places = vm.regions,
+                    enabled = apiReady && vm.selectedCountry != null,
+                    onValueChange = vm::updateRegionQuery,
+                    onFocus = vm::onRegionFocused,
+                    onClear = vm::clearRegionQuery,
+                    onDismiss = vm::dismissDropdowns,
+                    onSelect = vm::chooseRegion,
+                )
+            }
         }
 
-        vm.selectedPlace?.let { SelectedPlaceCard("Selected place", it) }
+        vm.selectedPlace?.let {
+            SelectedPlaceCard(
+                if (it.kind == "admin1") "Selected region" else "Check-in place",
+                it,
+            )
+        }
 
         OutlinedButton(
             onClick = { datePickerOpen = true },
@@ -156,43 +181,29 @@ fun CheckInFormScreen(onDone: () -> Unit) {
 private fun SearchField(
     value: String,
     label: String,
-    onValueChange: (String) -> Unit,
-    onSearch: () -> Unit,
+    open: Boolean,
+    loading: Boolean,
+    places: List<CatalogPlace>,
     enabled: Boolean,
-    searching: Boolean,
+    onValueChange: (String) -> Unit,
+    onFocus: () -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+    onSelect: (CatalogPlace) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text(label) },
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            enabled = enabled,
-        )
-        Button(onClick = onSearch, enabled = enabled && !searching) {
-            if (searching) CircularProgressIndicator(modifier = Modifier.padding(4.dp), strokeWidth = 2.dp)
-            else Text("Search")
-        }
-    }
-}
-
-@Composable
-private fun PlaceResults(places: List<CatalogPlace>, onSelect: (CatalogPlace) -> Unit) {
-    if (places.isNotEmpty()) {
-        Card {
-            LazyColumn(modifier = Modifier.height((places.size.coerceAtMost(5) * 56).dp)) {
-                items(places, key = { it.id }) { place ->
-                    TextButton(onClick = { onSelect(place) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                            Text(place.name, style = MaterialTheme.typography.bodyLarge)
-                            Text(place.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    CatalogPickerField(
+        value = value,
+        label = label,
+        open = open,
+        loading = loading,
+        places = places,
+        enabled = enabled,
+        onValueChange = onValueChange,
+        onFocus = onFocus,
+        onClear = onClear,
+        onDismiss = onDismiss,
+        onSelect = onSelect,
+    )
 }
 
 @Composable

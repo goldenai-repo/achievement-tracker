@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from io import TextIOWrapper
+from math import isfinite
 from pathlib import Path
 from typing import Iterator, Optional
+from zipfile import ZipFile
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +24,8 @@ class CatalogRecord:
     source_id: str
     source_version: str
     metadata: dict
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 def _fields(path: Path) -> Iterator[tuple[int, list[str]]]:
@@ -98,6 +103,48 @@ def parse_admin1(
     return records, rejected
 
 
+def parse_geonames_coordinates(path: Path, source_ids: set[str]) -> dict[str, tuple[float, float]]:
+    """Read coordinates for the requested GeoNames IDs from allCountries.
+
+    GeoNames publishes the complete feature dump as either allCountries.txt or
+    allCountries.zip. Only requested IDs are retained so the importer does not
+    need to keep the full dump in memory.
+    """
+    coordinates: dict[str, tuple[float, float]] = {}
+
+    def consume(handle) -> None:
+        for line in handle:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 6 or fields[0] not in source_ids:
+                continue
+            try:
+                latitude = float(fields[4])
+                longitude = float(fields[5])
+            except ValueError:
+                continue
+            if (
+                isfinite(latitude)
+                and isfinite(longitude)
+                and -90 <= latitude <= 90
+                and -180 <= longitude <= 180
+            ):
+                coordinates[fields[0]] = (latitude, longitude)
+
+    if path.suffix.lower() == ".zip":
+        with ZipFile(path) as archive:
+            names = [name for name in archive.namelist() if name.endswith("allCountries.txt")]
+            if not names:
+                raise ValueError(f"{path}: allCountries.txt was not found in archive")
+            with archive.open(names[0], "r") as binary_handle:
+                with TextIOWrapper(binary_handle, encoding="utf-8") as text_handle:
+                    consume(text_handle)
+    else:
+        with path.open("r", encoding="utf-8") as text_handle:
+            consume(text_handle)
+
+    return coordinates
+
+
 def upsert_catalog_records(session: Session, records: list[CatalogRecord]) -> tuple[int, int]:
     inserted = 0
     updated = 0
@@ -123,6 +170,9 @@ def upsert_catalog_records(session: Session, records: list[CatalogRecord]) -> tu
         entity.source_id = record.source_id
         entity.source_version = record.source_version
         entity.metadata_json = record.metadata
+        if record.latitude is not None and record.longitude is not None:
+            entity.latitude = record.latitude
+            entity.longitude = record.longitude
         entity.updated_at = now
     session.commit()
     return inserted, updated

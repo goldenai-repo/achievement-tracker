@@ -192,6 +192,13 @@ CREATE TABLE staging_catalog_entities (
 python -m scripts.download_geonames \
   --output-dir ../data/raw/geonames \
   --source-version 2026-02-09
+
+# Include coordinates for countries and first-level administrative regions.
+# This downloads the large GeoNames allCountries.zip archive.
+python -m scripts.download_geonames \
+  --output-dir ../data/raw/geonames \
+  --source-version 2026-02-09 \
+  --include-coordinates
 ```
 
 下载脚本行为：
@@ -210,6 +217,13 @@ python -m scripts.import_geonames \
   --input-dir ../data/raw/geonames \
   --source-version 2026-02-09 \
   --report ../data/reports/geonames-2026-02-09.json
+
+# If allCountries.zip is not in the input directory, pass it explicitly:
+python -m scripts.import_geonames \
+  --input-dir ../data/raw/geonames \
+  --coordinates-file ../data/raw/geonames/allCountries.zip \
+  --source-version 2026-02-09 \
+  --report ../data/reports/geonames-with-coordinates.json
 ```
 
 开发环境可以使用 SQLite 验证同一套解析和 upsert 逻辑；生产环境只允许 PostgreSQL/Cloud SQL。

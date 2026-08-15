@@ -39,3 +39,5 @@ actual fun parseIsoUtc(value: String): Long =
         timeZone = platform.Foundation.NSTimeZone.timeZoneForSecondsFromGMT(0)
     }.dateFromString(value)?.timeIntervalSince1970?.times(1000)?.toLong()
         ?: error("Invalid ISO date: $value")
+
+actual val mapStyleUrl: String = "https://tiles.openfreemap.org/styles/bright"

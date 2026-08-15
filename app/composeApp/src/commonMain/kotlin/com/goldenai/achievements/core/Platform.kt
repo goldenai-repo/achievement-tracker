@@ -15,3 +15,6 @@ expect fun formatIsoUtc(epochMillis: Long): String
 
 /** Parses the ISO-8601 values returned by FastAPI. */
 expect fun parseIsoUtc(value: String): Long
+
+/** Configured MapLibre style URL for the current platform/build. */
+expect val mapStyleUrl: String

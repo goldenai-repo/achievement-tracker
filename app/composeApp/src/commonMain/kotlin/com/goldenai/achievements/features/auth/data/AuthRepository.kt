@@ -2,6 +2,7 @@ package com.goldenai.achievements.features.auth.data
 
 import com.goldenai.achievements.core.AppResult
 import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.auth.EmailAuthProvider
 import dev.gitlive.firebase.auth.FirebaseUser
 import dev.gitlive.firebase.auth.auth
 import kotlinx.coroutines.flow.Flow
@@ -47,6 +48,21 @@ class AuthRepository(val cloudAvailable: Boolean) {
             AppResult.Ok(user.toAppUser())
         } catch (t: Throwable) {
             AppResult.Err(t.message ?: "Registration failed", t)
+        }
+    }
+
+    /** Re-authenticates the current email/password account before destructive actions. */
+    suspend fun reauthenticate(password: String): AppResult<Unit> {
+        if (!cloudAvailable) return AppResult.Err(CLOUD_UNAVAILABLE)
+        return try {
+            val user = Firebase.auth.currentUser
+                ?: return AppResult.Err("Sign in before deleting a cloud check-in.")
+            val email = user.email
+                ?: return AppResult.Err("This account does not have an email/password credential.")
+            user.reauthenticate(EmailAuthProvider.credential(email, password))
+            AppResult.Ok(Unit)
+        } catch (t: Throwable) {
+            AppResult.Err(t.message ?: "Password verification failed", t)
         }
     }
 

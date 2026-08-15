@@ -36,11 +36,19 @@ SELECT * FROM achievementEntity WHERE deleted = 0 ORDER BY timestamp DESC LIMIT 
 selectById:
 SELECT * FROM achievementEntity WHERE id = :id;
 
+updateDetails:
+UPDATE achievementEntity
+SET timestamp = :timestamp, notes = :notes, updatedAt = :updatedAt
+WHERE id = :id;
+
 countsByType:
 SELECT type, COUNT(*) AS cnt FROM achievementEntity WHERE deleted = 0 GROUP BY type;
 
 countAll:
 SELECT COUNT(*) FROM achievementEntity WHERE deleted = 0;
+
+countUniqueEntities:
+SELECT COUNT(DISTINCT entityId) FROM achievementEntity WHERE deleted = 0;
 
 countPending:
 SELECT COUNT(*) FROM achievementEntity WHERE pendingSync = 1;

@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///../data/achievement_tracker.db"
+    boundary_data_dir: str = "../data/raw/boundaries"
     firebase_project_id: Optional[str] = None
     firebase_credentials_path: Optional[str] = None
     web_origin: str = "http://localhost:5173"

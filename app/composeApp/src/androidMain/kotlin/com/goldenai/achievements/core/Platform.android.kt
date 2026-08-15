@@ -1,5 +1,6 @@
 package com.goldenai.achievements.core
 
+import com.goldenai.achievements.BuildConfig
 import java.text.DateFormat
 import java.time.Instant
 import java.time.LocalDateTime
@@ -30,3 +31,5 @@ actual fun parseIsoUtc(value: String): Long = runCatching {
         LocalDateTime.parse(value).toInstant(ZoneOffset.UTC).toEpochMilli()
     }
 }
+
+actual val mapStyleUrl: String = BuildConfig.MAP_STYLE_URL
