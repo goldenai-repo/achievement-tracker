@@ -1,0 +1,84 @@
+CREATE TABLE achievementEntity (
+  id TEXT NOT NULL PRIMARY KEY,
+  entityId TEXT NOT NULL,
+  entityKind TEXT NOT NULL,
+  entityCode TEXT NOT NULL,
+  parentId TEXT,
+  type TEXT NOT NULL,
+  subtype TEXT,
+  timestamp INTEGER NOT NULL,
+  latitude REAL,
+  longitude REAL,
+  locationName TEXT,
+  content TEXT NOT NULL,
+  notes TEXT,
+  mediaUrl TEXT,
+  createdAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  pendingSync INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE syncMeta (
+  key TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+selectAll:
+SELECT * FROM achievementEntity WHERE deleted = 0 ORDER BY timestamp DESC;
+
+selectByType:
+SELECT * FROM achievementEntity WHERE deleted = 0 AND type = :type ORDER BY timestamp DESC;
+
+selectRecent:
+SELECT * FROM achievementEntity WHERE deleted = 0 ORDER BY timestamp DESC LIMIT :limit;
+
+selectById:
+SELECT * FROM achievementEntity WHERE id = :id;
+
+updateDetails:
+UPDATE achievementEntity
+SET timestamp = :timestamp, notes = :notes, updatedAt = :updatedAt
+WHERE id = :id;
+
+countsByType:
+SELECT type, COUNT(*) AS cnt FROM achievementEntity WHERE deleted = 0 GROUP BY type;
+
+countAll:
+SELECT COUNT(*) FROM achievementEntity WHERE deleted = 0;
+
+countUniqueEntities:
+SELECT COUNT(DISTINCT entityId) FROM achievementEntity WHERE deleted = 0;
+
+countPending:
+SELECT COUNT(*) FROM achievementEntity WHERE pendingSync = 1;
+
+selectPending:
+SELECT * FROM achievementEntity WHERE pendingSync = 1;
+
+upsert:
+INSERT OR REPLACE INTO achievementEntity(
+  id, entityId, entityKind, entityCode, parentId, type, subtype, timestamp, latitude, longitude, locationName,
+  content, notes, mediaUrl, createdAt, updatedAt, deleted, pendingSync
+) VALUES (
+  :id, :entityId, :entityKind, :entityCode, :parentId, :type, :subtype, :timestamp, :latitude, :longitude, :locationName,
+  :content, :notes, :mediaUrl, :createdAt, :updatedAt, :deleted, :pendingSync
+);
+
+markDeleted:
+UPDATE achievementEntity SET deleted = 1, updatedAt = :updatedAt, pendingSync = 1 WHERE id = :id;
+
+clearPending:
+UPDATE achievementEntity SET pendingSync = 0 WHERE id = :id;
+
+deleteSynced:
+DELETE FROM achievementEntity WHERE pendingSync = 0;
+
+deleteById:
+DELETE FROM achievementEntity WHERE id = :id;
+
+getMeta:
+SELECT value FROM syncMeta WHERE key = :key;
+
+setMeta:
+INSERT OR REPLACE INTO syncMeta(key, value) VALUES (:key, :value);

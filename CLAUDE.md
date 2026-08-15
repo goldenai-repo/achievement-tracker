@@ -2,22 +2,25 @@
 
 ## Project Overview
 
-Cross-platform Flutter app (iOS / Android / Web) backed by Firebase / Google Cloud Platform. Users log life achievements across six categories: geography, wildlife, culture, entertainment, culinary, and UNESCO heritage sites.
+JavaScript/TypeScript web client and Python/FastAPI backend for a cross-platform achievement tracker. Firebase Authentication supplies identity; PostgreSQL is the business database. Kotlin Android/iOS clients are planned after the web/API MVP.
 
 ## Tech Stack
 
-- **Frontend:** Flutter (Dart), Riverpod, go_router
-- **Backend:** Firebase Auth, Cloud Firestore, Firebase Storage, optional App Engine
+- **Frontend:** TypeScript/JavaScript, Vite, Firebase Web SDK
+- **Backend:** Python, FastAPI, Pydantic, SQLAlchemy, Alembic
+- **Identity:** Firebase Auth and Firebase Admin Python SDK
+- **Database:** PostgreSQL locally and Cloud SQL in production
 - **Cloud:** Google Cloud Platform, Firebase
 - **CI/CD:** GitHub Actions
-- **Languages:** Dart (app), TypeScript (Firebase Functions), Python or Node.js (App Engine if used)
+- **Languages:** TypeScript/JavaScript (web), Python (API), Kotlin later (mobile)
 
 ## Repository Layout
 
 ```
-app/          Flutter app — all client code lives here
-backend/      Optional App Engine API (advanced queries, integrations)
-firebase/     Firestore security rules, indexes, Cloud Functions
+web/          Vite web client
+backend/      FastAPI API and tests
+data/seed/    Versioned catalog seed files
+infra/        Local Docker and cloud deployment configuration
 docs/         Architecture docs and implementation plan
 .github/      GitHub Actions workflows
 ```
@@ -25,49 +28,41 @@ docs/         Architecture docs and implementation plan
 ## Development Commands
 
 ```bash
-# Flutter
-flutter pub get              # install dependencies
-flutter run -d chrome        # run on web
-flutter run                  # run on connected device/simulator
-flutter test                 # run unit + widget tests
-flutter analyze              # static analysis
+# Web
+npm install
+npm run dev
+npm run test
+
+# Python
+uv sync
+uv run uvicorn app.main:app --reload
+uv run pytest
+uv run ruff check .
 
 # Firebase
-firebase emulators:start     # start local emulator suite (Auth, Firestore, Storage)
-firebase deploy --only firestore:rules   # deploy security rules
-firebase deploy --only hosting           # deploy web app
+firebase login               # authenticate Firebase CLI when needed
 
 # Google Cloud
-gcloud auth login            # authenticate CLI
+gcloud auth login
 gcloud config set project <PROJECT_ID>
-gcloud app deploy            # deploy App Engine backend
+gcloud run deploy            # deploy FastAPI service
 ```
 
 ## Code Conventions
 
-- Feature-first folder structure under `app/lib/features/`
-- Each feature has `data/`, `domain/`, and `presentation/` layers
-- Use Riverpod providers for all state; no raw `setState` in feature code
-- Firestore document IDs: always use user UID as path prefix (`users/{uid}/achievements/{docId}`)
-- All Firestore writes must go through the repository layer, never directly from UI widgets
+- Feature-first structure under `web/src/` and layered structure under `backend/app/`
+- All business writes go through FastAPI services/repositories; the browser never accesses PostgreSQL
+- Firebase UID is the external user identifier in every user-owned API query
 - Timestamps: always store as UTC, display in local time
 - Error handling: use sealed `Result<T>` types rather than throwing exceptions from repositories
 
-## Firestore Data Model
+## PostgreSQL Data Model
 
 ```
-users/{uid}
-  achievements/{achievementId}
-    type: string          # "geography.country" | "wildlife.animal" | ...
-    subtype: string       # optional further classification
-    timestamp: timestamp  # UTC
-    location: geopoint    # nullable
-    locationName: string  # human-readable place
-    content: string       # e.g. species name, restaurant name
-    notes: string         # optional
-    mediaUrl: string      # optional Firebase Storage URL
-    createdAt: timestamp
-    updatedAt: timestamp
+catalog_entities(id, kind, code, name, parent_id, source, source_id, source_version)
+users(firebase_uid, email, display_name, created_at, updated_at)
+user_checkins(id, user_id, entity_id, visited_at, note, latitude, longitude, created_at, updated_at)
+user_unlocks(user_id, entity_id, first_checked_in_at, last_checked_in_at, visit_count, updated_at)
 ```
 
 ## Achievement Type Registry
@@ -86,20 +81,20 @@ users/{uid}
 
 ## Security Rules Principles
 
-- Users can only read and write their own documents (`request.auth.uid == userId`)
-- No unauthenticated reads
-- Validate all fields on write (type must be in the allowed enum, timestamp must be present)
+- FastAPI verifies Firebase ID tokens before every user-owned operation
+- User queries are always scoped by the verified Firebase UID
+- Catalog writes are restricted to the import/admin job
+- Validate entity IDs, timestamps, coordinates, and note lengths at the API boundary
 
 ## Testing Strategy
 
-- Unit tests for all repository and domain logic
-- Widget tests for key screens (login, achievement submission form, list views)
-- Integration tests using Firebase emulator suite
-- No mocking of Firestore — use the local emulator instead
+- Unit tests for API services and domain logic
+- API integration tests use a disposable PostgreSQL database/container
+- Browser E2E tests cover registration, login, create check-in, list, and user isolation
 
 ## Environment Variables / Secrets
 
-Never commit `google-services.json`, `GoogleService-Info.plist`, or any `.env` file. These are gitignored. Use Firebase environment config and CI secrets for deployment.
+Never commit Firebase service-account JSON, private keys, or any `.env` file. Use Firebase web config environment variables and CI/Cloud Run secrets for deployment.
 
 ## PR Workflow
 

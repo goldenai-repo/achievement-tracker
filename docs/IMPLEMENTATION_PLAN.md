@@ -1,4 +1,6 @@
-# Achievement Tracker — Implementation Plan
+# Achievement Tracker — Historical Flutter Implementation Plan
+
+> This document is retained as historical planning context. The active plan is [`IMPLEMENTATION_PLAN_WEB_PYTHON.md`](IMPLEMENTATION_PLAN_WEB_PYTHON.md), which uses a JavaScript/TypeScript web client, Python/FastAPI, PostgreSQL, and Firebase Authentication.
 
 ## Overview
 

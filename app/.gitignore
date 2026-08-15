@@ -1,0 +1,24 @@
+.gradle/
+build/
+**/build/
+local.properties
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Per-developer Firebase config — never commit (see docs/MOBILE_SETUP.md)
+google-services.json
+GoogleService-Info.plist
+
+# iOS
+iosApp/iosApp.xcodeproj/xcuserdata/
+iosApp/iosApp.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.ipa
+*.dSYM.zip
+
+# IDE
+.idea/
+*.iml
+.DS_Store
