@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 class AchievementValidationTest {
 
     @Test
-    fun `valid submission passes`() {
+    fun `valid submission does not require location`() {
         assertTrue(AchievementValidation.isValid("geography.country", "Japan"))
     }
 

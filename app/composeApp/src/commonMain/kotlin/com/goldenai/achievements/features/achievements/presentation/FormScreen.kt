@@ -42,10 +42,12 @@ import com.goldenai.achievements.di.AppGraph
 @Composable
 fun FormScreen(
     editId: String?,
-    onDone: () -> Unit,
+    category: String? = null,
+    onBack: () -> Unit,
+    onSaved: (listCategory: String?) -> Unit,
 ) {
-    val vm: AchievementFormViewModel = viewModel(key = editId ?: "new") {
-        AchievementFormViewModel(AppGraph.achievements, editId)
+    val vm: AchievementFormViewModel = viewModel(key = editId ?: "new-${category.orEmpty()}") {
+        AchievementFormViewModel(AppGraph.achievements, editId, category)
     }
     var typeMenuOpen by remember { mutableStateOf(false) }
     var datePickerOpen by remember { mutableStateOf(false) }
@@ -56,7 +58,7 @@ fun FormScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onDone) { Text("‹ Back") }
+            TextButton(onClick = onBack) { Text("‹ Back") }
             Spacer(Modifier.weight(1f))
             if (vm.isEdit) {
                 TextButton(onClick = { confirmDelete = true }) {
@@ -86,7 +88,11 @@ fun FormScreen(
                 modifier = Modifier.fillMaxWidth().menuAnchor(),
             )
             ExposedDropdownMenu(expanded = typeMenuOpen, onDismissRequest = { typeMenuOpen = false }) {
-                AchievementType.entries.forEach { type ->
+                val typeChoices = category
+                    ?.let { AchievementType.typesForCategory(it) }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: AchievementType.entries
+                typeChoices.forEach { type ->
                     DropdownMenuItem(
                         text = { Text("${type.emoji} ${type.label}") },
                         onClick = {
@@ -130,7 +136,7 @@ fun FormScreen(
         }
 
         Button(
-            onClick = { vm.save(onSuccess = onDone) },
+            onClick = { vm.save(onSuccess = onSaved) },
             enabled = vm.isValid && !vm.saving,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -166,7 +172,7 @@ fun FormScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
-                    vm.delete(onSuccess = onDone)
+                    vm.delete(onSuccess = { onSaved(category) })
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {

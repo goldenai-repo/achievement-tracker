@@ -6,5 +6,9 @@ import com.goldenai.achievements.db.AchievementDatabase
 
 actual class DriverFactory {
     actual fun createDriver(): SqlDriver =
-        NativeSqliteDriver(AchievementDatabase.Schema, "achievements.db")
+        NativeSqliteDriver(
+            schema = AchievementDatabase.Schema,
+            name = "achievements.db",
+            maxReaderConnections = 1,
+        )
 }

@@ -30,4 +30,27 @@ class AchievementTypeTest {
         val keys = AchievementType.entries.map { it.key }
         assertEquals(keys.size, keys.toSet().size)
     }
+
+    @Test
+    fun `six product categories are grouped in registry order`() {
+        assertEquals(
+            listOf("Geography", "Wildlife", "Culture", "Entertainment", "Culinary", "Heritage"),
+            AchievementType.categories.map { it.name },
+        )
+    }
+
+    @Test
+    fun `geography category includes country state and city keys`() {
+        assertEquals(
+            listOf("geography.country", "geography.state", "geography.city"),
+            AchievementType.keysForCategory("Geography"),
+        )
+    }
+
+    @Test
+    fun `saved type maps to the list category to open`() {
+        assertEquals("Geography", AchievementType.listCategoryFor("geography.city"))
+        assertEquals("Wildlife", AchievementType.listCategoryFor("wildlife.animal"))
+        assertNull(AchievementType.listCategoryFor("unknown"))
+    }
 }

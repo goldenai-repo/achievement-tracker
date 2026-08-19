@@ -30,13 +30,13 @@ import kotlinx.serialization.Serializable
 object HomeRoute
 
 @Serializable
-data class ListRoute(val typeKey: String? = null)
+data class ListRoute(val category: String? = null)
 
 @Serializable
 object AccountRoute
 
 @Serializable
-data class FormRoute(val id: String? = null)
+data class FormRoute(val id: String? = null, val category: String? = null)
 
 @Serializable
 object SignInRoute
@@ -91,7 +91,11 @@ fun App() {
             },
             floatingActionButton = {
                 if (onHome || onList) {
-                    FloatingActionButton(onClick = { navController.navigate(FormRoute()) }) {
+                    val listCategory =
+                        if (onList) backStackEntry?.toRoute<ListRoute>()?.category else null
+                    FloatingActionButton(
+                        onClick = { navController.navigate(FormRoute(category = listCategory)) },
+                    ) {
                         Text("＋", style = MaterialTheme.typography.headlineMedium)
                     }
                 }
@@ -104,7 +108,7 @@ fun App() {
             ) {
                 composable<HomeRoute> {
                     HomeScreen(
-                        onCategoryClick = { typeKey -> navController.navigate(ListRoute(typeKey)) },
+                        onCategoryClick = { category -> navController.navigate(ListRoute(category)) },
                         onItemClick = { id -> navController.navigate(FormRoute(id)) },
                         onBackupClick = { navigateToTab(AccountRoute) },
                     )
@@ -112,8 +116,9 @@ fun App() {
                 composable<ListRoute> { entry ->
                     val route = entry.toRoute<ListRoute>()
                     ListScreen(
-                        initialType = route.typeKey,
-                        onItemClick = { id -> navController.navigate(FormRoute(id)) },
+                        category = route.category,
+                        onItemClick = { id -> navController.navigate(FormRoute(id = id)) },
+                        onAddClick = { navController.navigate(FormRoute(category = route.category)) },
                     )
                 }
                 composable<AccountRoute> {
@@ -124,7 +129,20 @@ fun App() {
                 }
                 composable<FormRoute> { entry ->
                     val route = entry.toRoute<FormRoute>()
-                    FormScreen(editId = route.id, onDone = { navController.popBackStack() })
+                    FormScreen(
+                        editId = route.id,
+                        category = route.category,
+                        onBack = { navController.popBackStack() },
+                        onSaved = { listCategory ->
+                            val restoredList = navController.popBackStack<ListRoute>(inclusive = false)
+                            if (!restoredList) {
+                                navController.navigate(ListRoute(listCategory)) {
+                                    popUpTo<HomeRoute> { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                    )
                 }
                 composable<SignInRoute> {
                     SignInScreen(

@@ -4,14 +4,15 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOne
 import com.goldenai.achievements.core.AppResult
+import com.goldenai.achievements.core.db.databaseDispatcher
 import com.goldenai.achievements.core.model.Achievement
 import com.goldenai.achievements.core.nowEpochMillis
 import com.goldenai.achievements.core.randomUuid
 import com.goldenai.achievements.core.runCatchingResult
 import com.goldenai.achievements.db.AchievementDatabase
 import com.goldenai.achievements.db.AchievementEntity
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -28,22 +29,28 @@ class AchievementRepository(
     private val q = db.achievementQueries
 
     fun watchAll(): Flow<List<Achievement>> =
-        q.selectAll().asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map { it.toModel() } }
+        q.selectAll().asFlow().mapToList(databaseDispatcher).map { rows -> rows.map { it.toModel() } }
 
     fun watchByType(type: String): Flow<List<Achievement>> =
-        q.selectByType(type).asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map { it.toModel() } }
+        q.selectByType(type).asFlow().mapToList(databaseDispatcher).map { rows -> rows.map { it.toModel() } }
+
+    fun watchByTypes(types: Collection<String>): Flow<List<Achievement>> {
+        if (types.isEmpty()) return flowOf(emptyList())
+        return q.selectByTypes(types).asFlow().mapToList(databaseDispatcher)
+            .map { rows -> rows.map { it.toModel() } }
+    }
 
     fun watchRecent(limit: Long): Flow<List<Achievement>> =
-        q.selectRecent(limit).asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map { it.toModel() } }
+        q.selectRecent(limit).asFlow().mapToList(databaseDispatcher).map { rows -> rows.map { it.toModel() } }
 
     fun watchCountsByType(): Flow<Map<String, Long>> =
-        q.countsByType().asFlow().mapToList(Dispatchers.Default)
+        q.countsByType().asFlow().mapToList(databaseDispatcher)
             .map { rows -> rows.associate { it.type to it.cnt } }
 
     fun watchPendingCount(): Flow<Long> =
-        q.countPending().asFlow().mapToOne(Dispatchers.Default)
+        q.countPending().asFlow().mapToOne(databaseDispatcher)
 
-    suspend fun get(id: String): Achievement? = withContext(Dispatchers.Default) {
+    suspend fun get(id: String): Achievement? = withContext(databaseDispatcher) {
         q.selectById(id).executeAsOneOrNull()?.toModel()
     }
 
@@ -56,7 +63,9 @@ class AchievementRepository(
         longitude: Double? = null,
         locationName: String? = null,
         notes: String? = null,
-    ): AppResult<Achievement> = withContext(Dispatchers.Default) {
+        mediaUrl: String? = null,
+        ownerUid: String? = null,
+    ): AppResult<Achievement> = withContext(databaseDispatcher) {
         runCatchingResult("Could not save achievement") {
             val now = nowEpochMillis()
             val achievement = Achievement(
@@ -69,15 +78,17 @@ class AchievementRepository(
                 locationName = locationName?.takeIf { it.isNotBlank() },
                 content = content.trim(),
                 notes = notes?.takeIf { it.isNotBlank() },
+                mediaUrl = mediaUrl?.takeIf { it.isNotBlank() },
                 createdAt = now,
                 updatedAt = now,
+                ownerUid = ownerUid?.takeIf { it.isNotBlank() },
             )
             upsertLocal(achievement)
             achievement
         }.also { if (it is AppResult.Ok) onLocalChange() }
     }
 
-    suspend fun update(achievement: Achievement): AppResult<Achievement> = withContext(Dispatchers.Default) {
+    suspend fun update(achievement: Achievement): AppResult<Achievement> = withContext(databaseDispatcher) {
         runCatchingResult("Could not update achievement") {
             val updated = achievement.copy(
                 content = achievement.content.trim(),
@@ -91,7 +102,7 @@ class AchievementRepository(
     }
 
     /** Soft delete: the row becomes a tombstone that syncs to the cloud. */
-    suspend fun delete(id: String): AppResult<Unit> = withContext(Dispatchers.Default) {
+    suspend fun delete(id: String): AppResult<Unit> = withContext(databaseDispatcher) {
         runCatchingResult("Could not delete achievement") {
             q.markDeleted(updatedAt = nowEpochMillis(), id = id)
             Unit
@@ -114,6 +125,7 @@ class AchievementRepository(
             updatedAt = a.updatedAt,
             deleted = 0,
             pendingSync = 1,
+            ownerUid = a.ownerUid,
         )
     }
 }
@@ -131,4 +143,5 @@ fun AchievementEntity.toModel(): Achievement = Achievement(
     mediaUrl = mediaUrl,
     createdAt = createdAt,
     updatedAt = updatedAt,
+    ownerUid = ownerUid,
 )

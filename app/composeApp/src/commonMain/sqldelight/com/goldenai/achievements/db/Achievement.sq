@@ -12,7 +12,8 @@ CREATE TABLE achievementEntity (
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
-  pendingSync INTEGER NOT NULL DEFAULT 1
+  pendingSync INTEGER NOT NULL DEFAULT 1,
+  ownerUid TEXT
 );
 
 CREATE TABLE syncMeta (
@@ -25,6 +26,9 @@ SELECT * FROM achievementEntity WHERE deleted = 0 ORDER BY timestamp DESC;
 
 selectByType:
 SELECT * FROM achievementEntity WHERE deleted = 0 AND type = :type ORDER BY timestamp DESC;
+
+selectByTypes:
+SELECT * FROM achievementEntity WHERE deleted = 0 AND type IN :types ORDER BY timestamp DESC;
 
 selectRecent:
 SELECT * FROM achievementEntity WHERE deleted = 0 ORDER BY timestamp DESC LIMIT :limit;
@@ -47,17 +51,17 @@ SELECT * FROM achievementEntity WHERE pendingSync = 1;
 upsert:
 INSERT OR REPLACE INTO achievementEntity(
   id, type, subtype, timestamp, latitude, longitude, locationName,
-  content, notes, mediaUrl, createdAt, updatedAt, deleted, pendingSync
+  content, notes, mediaUrl, createdAt, updatedAt, deleted, pendingSync, ownerUid
 ) VALUES (
   :id, :type, :subtype, :timestamp, :latitude, :longitude, :locationName,
-  :content, :notes, :mediaUrl, :createdAt, :updatedAt, :deleted, :pendingSync
+  :content, :notes, :mediaUrl, :createdAt, :updatedAt, :deleted, :pendingSync, :ownerUid
 );
 
 markDeleted:
 UPDATE achievementEntity SET deleted = 1, updatedAt = :updatedAt, pendingSync = 1 WHERE id = :id;
 
 clearPending:
-UPDATE achievementEntity SET pendingSync = 0 WHERE id = :id;
+UPDATE achievementEntity SET pendingSync = 0, ownerUid = :ownerUid WHERE id = :id;
 
 deleteSynced:
 DELETE FROM achievementEntity WHERE pendingSync = 0;

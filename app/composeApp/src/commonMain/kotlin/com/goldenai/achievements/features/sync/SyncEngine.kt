@@ -1,6 +1,7 @@
 package com.goldenai.achievements.features.sync
 
 import com.goldenai.achievements.core.AppResult
+import com.goldenai.achievements.core.db.databaseDispatcher
 import com.goldenai.achievements.core.nowEpochMillis
 import com.goldenai.achievements.db.AchievementDatabase
 import com.goldenai.achievements.db.AchievementEntity
@@ -9,7 +10,6 @@ import dev.gitlive.firebase.firestore.CollectionReference
 import dev.gitlive.firebase.firestore.GeoPoint
 import dev.gitlive.firebase.firestore.Timestamp
 import dev.gitlive.firebase.firestore.firestore
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
@@ -70,7 +70,7 @@ class SyncEngine(
             handleAccountSwitch(uid)
             push(uid)
             pull(uid)
-            withContext(Dispatchers.Default) {
+            withContext(databaseDispatcher) {
                 q.setMeta("lastSyncedUid", uid)
                 q.setMeta("lastSyncAt", nowEpochMillis().toString())
             }
@@ -80,7 +80,7 @@ class SyncEngine(
         }
     }
 
-    suspend fun lastSyncAt(): Long? = withContext(Dispatchers.Default) {
+    suspend fun lastSyncAt(): Long? = withContext(databaseDispatcher) {
         q.getMeta("lastSyncAt").executeAsOneOrNull()?.toLongOrNull()
     }
 
@@ -89,7 +89,7 @@ class SyncEngine(
      * belong to that account (pendingSync = 0). Unsynced local rows are kept
      * so guest data can be uploaded to the account that signs in.
      */
-    private suspend fun handleAccountSwitch(uid: String) = withContext(Dispatchers.Default) {
+    private suspend fun handleAccountSwitch(uid: String) = withContext(databaseDispatcher) {
         val lastUid = q.getMeta("lastSyncedUid").executeAsOneOrNull()
         if (lastUid != null && lastUid != uid) {
             q.deleteSynced()
@@ -97,17 +97,17 @@ class SyncEngine(
     }
 
     private suspend fun push(uid: String) {
-        val pending = withContext(Dispatchers.Default) { q.selectPending().executeAsList() }
+        val pending = withContext(databaseDispatcher) { q.selectPending().executeAsList() }
         for (row in pending) {
             collection(uid).document(row.id).set(row.toDoc(), merge = true)
-            withContext(Dispatchers.Default) { q.clearPending(row.id) }
+            withContext(databaseDispatcher) { q.clearPending(ownerUid = uid, id = row.id) }
         }
     }
 
     private suspend fun pull(uid: String) {
         val snapshot = collection(uid).get()
         val remote = snapshot.documents.map { it.id to it.data<AchievementDoc>() }
-        withContext(Dispatchers.Default) {
+        withContext(databaseDispatcher) {
             db.transaction {
                 for ((id, doc) in remote) {
                     val local = q.selectById(id).executeAsOneOrNull()
@@ -128,6 +128,7 @@ class SyncEngine(
                             updatedAt = remoteUpdatedAt,
                             deleted = if (doc.deleted) 1 else 0,
                             pendingSync = 0,
+                            ownerUid = uid,
                         )
                     }
                 }

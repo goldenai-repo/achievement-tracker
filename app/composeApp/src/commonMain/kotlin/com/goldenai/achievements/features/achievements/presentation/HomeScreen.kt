@@ -71,17 +71,18 @@ fun HomeScreen(
             }
         }
 
-        items(AchievementType.entries.toList().chunked(2)) { rowTypes ->
+        items(AchievementType.categories.chunked(2)) { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                rowTypes.forEach { type ->
+                row.forEach { category ->
                     CategoryCard(
-                        type = type,
-                        count = counts[type.key] ?: 0L,
+                        emoji = category.emoji,
+                        count = category.typeKeys.sumOf { counts[it] ?: 0L },
+                        label = category.name,
                         modifier = Modifier.weight(1f),
-                        onClick = { onCategoryClick(type.key) },
+                        onClick = { onCategoryClick(category.name) },
                     )
                 }
-                if (rowTypes.size == 1) Spacer(Modifier.weight(1f))
+                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
 
@@ -108,18 +109,19 @@ fun HomeScreen(
 
 @Composable
 private fun CategoryCard(
-    type: AchievementType,
+    emoji: String,
     count: Long,
+    label: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Card(onClick = onClick, modifier = modifier) {
         Column(Modifier.padding(14.dp)) {
-            Text(type.emoji, style = MaterialTheme.typography.headlineSmall)
+            Text(emoji, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(6.dp))
             Text("$count", style = MaterialTheme.typography.titleLarge)
             Text(
-                type.label,
+                label,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,

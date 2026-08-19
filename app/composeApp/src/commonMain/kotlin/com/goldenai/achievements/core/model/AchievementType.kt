@@ -18,9 +18,35 @@ enum class AchievementType(
     CultureMuseum("culture.museum", "Culture", "Museum or gallery visited", "🏛️"),
     EntertainmentMovie("entertainment.movie", "Entertainment", "Movie watched", "🎬"),
     CulinaryMichelin("culinary.michelin", "Culinary", "Michelin-starred restaurant visited", "⭐"),
-    HeritageUnesco("heritage.unesco", "UNESCO Heritage", "UNESCO World Heritage Site visited", "🏯");
+    HeritageUnesco("heritage.unesco", "Heritage", "UNESCO World Heritage Site visited", "🏯");
 
     companion object {
         fun fromKey(key: String): AchievementType? = entries.firstOrNull { it.key == key }
+
+        /** Product categories in registry order: Geography, Wildlife, Culture, Entertainment, Culinary, Heritage. */
+        val categories: List<AchievementCategory> =
+            entries.groupBy { it.category }.map { (name, types) ->
+                AchievementCategory(
+                    name = name,
+                    emoji = types.first().emoji,
+                    typeKeys = types.map { it.key },
+                )
+            }
+
+        fun typesForCategory(category: String): List<AchievementType> =
+            entries.filter { it.category == category }
+
+        fun keysForCategory(category: String): List<String> =
+            typesForCategory(category).map { it.key }
+
+        /** List filter to open after saving a record of this type. */
+        fun listCategoryFor(typeKey: String): String? = fromKey(typeKey)?.category
     }
 }
+
+/** Group of [AchievementType]s that share a [name] (e.g. Geography). */
+data class AchievementCategory(
+    val name: String,
+    val emoji: String,
+    val typeKeys: List<String>,
+)

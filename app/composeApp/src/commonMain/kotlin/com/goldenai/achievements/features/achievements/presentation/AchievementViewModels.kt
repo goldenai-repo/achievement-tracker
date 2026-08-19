@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.goldenai.achievements.core.AppResult
 import com.goldenai.achievements.core.model.Achievement
+import com.goldenai.achievements.core.model.AchievementType
 import com.goldenai.achievements.core.nowEpochMillis
 import com.goldenai.achievements.features.achievements.data.AchievementRepository
 import com.goldenai.achievements.features.achievements.domain.AchievementValidation
@@ -30,14 +31,24 @@ class HomeViewModel(repo: AchievementRepository) : ViewModel() {
 @OptIn(ExperimentalCoroutinesApi::class)
 class AchievementListViewModel(
     repo: AchievementRepository,
-    initialType: String?,
+    private val category: String?,
 ) : ViewModel() {
-    private val _selectedType = MutableStateFlow(initialType)
+    val filterTypes: List<AchievementType> =
+        if (category == null) AchievementType.entries
+        else AchievementType.typesForCategory(category)
+
+    private val _selectedType = MutableStateFlow<String?>(null)
     val selectedType: StateFlow<String?> = _selectedType.asStateFlow()
 
     val items: StateFlow<List<Achievement>> = _selectedType
-        .flatMapLatest { type -> if (type == null) repo.watchAll() else repo.watchByType(type) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .flatMapLatest { type ->
+            when {
+                type != null -> repo.watchByType(type)
+                category != null -> repo.watchByTypes(filterTypes.map { it.key })
+                else -> repo.watchAll()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun selectType(typeKey: String?) {
         _selectedType.value = typeKey
@@ -47,9 +58,12 @@ class AchievementListViewModel(
 class AchievementFormViewModel(
     private val repo: AchievementRepository,
     private val editId: String?,
+    initialCategory: String? = null,
 ) : ViewModel() {
 
-    var typeKey by mutableStateOf<String?>(null)
+    var typeKey by mutableStateOf(
+        if (editId == null) AchievementType.keysForCategory(initialCategory ?: "").firstOrNull() else null,
+    )
     var content by mutableStateOf("")
     var locationName by mutableStateOf("")
     var notes by mutableStateOf("")
@@ -82,7 +96,7 @@ class AchievementFormViewModel(
         }
     }
 
-    fun save(onSuccess: () -> Unit) {
+    fun save(onSuccess: (listCategory: String?) -> Unit) {
         val type = typeKey ?: return
         if (!isValid || saving) return
         saving = true
@@ -107,7 +121,7 @@ class AchievementFormViewModel(
             )
             saving = false
             when (result) {
-                is AppResult.Ok -> onSuccess()
+                is AppResult.Ok -> onSuccess(AchievementType.listCategoryFor(type))
                 is AppResult.Err -> error = result.message
             }
         }
