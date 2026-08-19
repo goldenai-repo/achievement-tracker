@@ -186,10 +186,12 @@ class ExploreViewModel(
         selectedRegion = region
         level = ExploreLevel.ADMIN1
         regionQuery = region.name
-        regions = emptyList()
         regionDropdownOpen = false
         error = null
     }
+
+    /** Looks up a rendered boundary's catalog id in the already loaded region list. */
+    fun regionById(id: String): CatalogPlace? = regions.firstOrNull { it.id == id }
 
     fun clearRegion() {
         selectedRegion = null
@@ -200,6 +202,11 @@ class ExploreViewModel(
     }
 
     fun backToCountryPicker() {
+        clearCountry()
+    }
+
+    /** Removes the temporary Explore search context before opening Check-in. */
+    fun clearSearchContextForCheckIn() {
         clearCountry()
     }
 

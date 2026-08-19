@@ -37,12 +37,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goldenai.achievements.core.formatDate
 import com.goldenai.achievements.di.AppGraph
 import com.goldenai.achievements.features.api.CatalogPlace
+import com.goldenai.achievements.features.api.CheckInSelection
 import com.goldenai.achievements.features.catalog.CatalogPickerField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckInFormScreen(onDone: () -> Unit) {
-    val vm: CheckInFormViewModel = viewModel { CheckInFormViewModel(AppGraph.achievements, AppGraph.api) }
+    val initialSelection = remember { AppGraph.consumePendingCheckInSelection() }
+    val vm: CheckInFormViewModel = viewModel {
+        CheckInFormViewModel(AppGraph.achievements, AppGraph.api, initialSelection)
+    }
     val user by AppGraph.auth.authState.collectAsState(initial = AppGraph.auth.currentUser)
     val apiReady = AppGraph.cloudAvailable && user != null
     var datePickerOpen by remember { mutableStateOf(false) }

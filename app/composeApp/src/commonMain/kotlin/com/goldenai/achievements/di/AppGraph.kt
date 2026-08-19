@@ -5,6 +5,7 @@ import com.goldenai.achievements.db.AchievementDatabase
 import com.goldenai.achievements.features.achievements.data.AchievementRepository
 import com.goldenai.achievements.features.api.createAchievementApi
 import com.goldenai.achievements.features.api.AchievementApi
+import com.goldenai.achievements.features.api.CheckInSelection
 import com.goldenai.achievements.features.auth.data.AuthRepository
 import com.goldenai.achievements.features.sync.SyncCoordinator
 import com.goldenai.achievements.features.sync.SyncEngine
@@ -28,6 +29,12 @@ object AppGraph {
 
     var cloudAvailable: Boolean = false
         private set
+
+    /** One-shot selection used when Explore opens the shared check-in form. */
+    var pendingCheckInSelection: CheckInSelection? = null
+
+    fun consumePendingCheckInSelection(): CheckInSelection? =
+        pendingCheckInSelection.also { pendingCheckInSelection = null }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var initialized = false

@@ -9,6 +9,10 @@ data class MapPoint(
     val subtitle: String,
     val latitude: Double,
     val longitude: Double,
+    /** True for a place already present in the user's check-in history. */
+    val isCheckedIn: Boolean = true,
+    /** True for the temporary marker created by the current map search. */
+    val isSearchSelection: Boolean = false,
 )
 
 data class MapViewport(
@@ -41,5 +45,7 @@ expect fun VectorMap(
     styleUrl: String,
     viewport: MapViewport? = null,
     onViewportChanged: (MapViewport) -> Unit = {},
+    onPointClick: (MapPoint) -> Unit = {},
+    onBoundaryClick: (String) -> Unit = {},
     modifier: Modifier,
 )

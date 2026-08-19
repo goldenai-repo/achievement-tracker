@@ -11,6 +11,7 @@ import com.goldenai.achievements.core.nowEpochMillis
 import com.goldenai.achievements.di.AppGraph
 import com.goldenai.achievements.features.achievements.data.AchievementRepository
 import com.goldenai.achievements.features.api.CatalogPlace
+import com.goldenai.achievements.features.api.CheckInSelection
 import com.goldenai.achievements.features.api.AchievementApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -236,6 +237,7 @@ private fun countryIdFor(achievement: Achievement): String =
 class CheckInFormViewModel(
     private val repo: AchievementRepository,
     private val api: AchievementApi,
+    initialSelection: CheckInSelection? = null,
 ) : ViewModel() {
     var countryQuery by mutableStateOf("")
     var regionQuery by mutableStateOf("")
@@ -266,6 +268,27 @@ class CheckInFormViewModel(
 
     private var countrySearchJob: Job? = null
     private var regionSearchJob: Job? = null
+
+    init {
+        initialSelection?.let { selection ->
+            selectedCountry = selection.country
+            countryQuery = selection.country.name
+            if (selection.isCountrySelection) {
+                // Country markers summarize visited regions, but the actual
+                // check-in must still resolve to an admin-1 place.
+                selectedPlace = null
+                countryHasRegions = true
+                startRegionSearch(null) {
+                    countryHasRegions = regions.isNotEmpty()
+                    if (!countryHasRegions) selectedPlace = selection.country
+                }
+            } else {
+                selectedPlace = selection.place
+                countryHasRegions = selection.place.kind == "admin1"
+                regionQuery = selection.place.name
+            }
+        }
+    }
 
     fun onCountryFocused() {
         countryDropdownOpen = true
