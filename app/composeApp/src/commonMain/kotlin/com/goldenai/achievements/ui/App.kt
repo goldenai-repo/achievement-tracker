@@ -16,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.goldenai.achievements.di.AppGraph
 import com.goldenai.achievements.features.achievements.presentation.CheckInFormScreen
 import com.goldenai.achievements.features.achievements.presentation.HomeScreen
 import com.goldenai.achievements.features.achievements.presentation.ListScreen
@@ -146,7 +147,12 @@ fun App() {
                     )
                 }
                 composable<ExploreRoute> {
-                    ExploreScreen()
+                    ExploreScreen(
+                        onCheckIn = { selection ->
+                            AppGraph.pendingCheckInSelection = selection
+                            navController.navigate(FormRoute())
+                        },
+                    )
                 }
                 composable<AccountRoute> {
                     ProfileScreen(

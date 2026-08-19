@@ -105,8 +105,11 @@ class AchievementRepository(
             is AppResult.Ok -> {
                 val achievement = result.value?.let { response ->
                     withContext(Dispatchers.Default) {
-                        upsertLocal(response, pendingSync = 0)
-                        response.toModel()
+                        // Keep the catalog coordinates selected by the user
+                        // even if an older API response omits them.
+                        val model = response.toModel(place)
+                        upsertLocal(model, pendingSync = 0)
+                        model
                     }
                 } ?: withContext(Dispatchers.Default) {
                     val local = Achievement(
@@ -117,6 +120,8 @@ class AchievementRepository(
                         parentId = place.parentId,
                         type = place.toAchievementType(),
                         timestamp = timestamp,
+                        latitude = place.latitude,
+                        longitude = place.longitude,
                         locationName = place.name,
                         content = place.name,
                         notes = notes?.takeIf { it.isNotBlank() },

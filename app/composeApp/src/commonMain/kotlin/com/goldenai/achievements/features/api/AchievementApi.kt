@@ -26,6 +26,14 @@ data class CatalogPlace(
     val bounds: CatalogBounds? = null,
 )
 
+/** A place selection passed from a map surface into the shared check-in form. */
+data class CheckInSelection(
+    val country: CatalogPlace,
+    val place: CatalogPlace,
+) {
+    val isCountrySelection: Boolean get() = place.kind == "country"
+}
+
 @Serializable
 data class CheckInRequest(
     @SerialName("entity_id") val entityId: String,

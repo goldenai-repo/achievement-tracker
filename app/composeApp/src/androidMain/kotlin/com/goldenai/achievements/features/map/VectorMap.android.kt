@@ -8,8 +8,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import java.net.URI
+import kotlin.math.abs
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.Icon
+import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -34,13 +42,59 @@ actual fun VectorMap(
     styleUrl: String,
     viewport: MapViewport?,
     onViewportChanged: (MapViewport) -> Unit,
+    onPointClick: (MapPoint) -> Unit,
+    onBoundaryClick: (String) -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
     val latestViewportCallback = rememberUpdatedState(onViewportChanged)
+    val latestPointClickCallback = rememberUpdatedState(onPointClick)
+    val latestBoundaryClickCallback = rememberUpdatedState(onBoundaryClick)
+    val latestPoints = rememberUpdatedState(points)
+    val latestBoundaries = rememberUpdatedState(boundaries)
     val mapReference = remember { mutableStateOf<MapLibreMap?>(null) }
     val loadedStyleUrl = remember { mutableStateOf<String?>(null) }
     val appliedCameraKey = remember { mutableStateOf<String?>(null) }
+    val mapClickListener = remember {
+        object : MapLibreMap.OnMapClickListener {
+            override fun onMapClick(point: LatLng): Boolean {
+                val map = mapReference.value ?: return false
+                val layerIds = map.style?.layers
+                    ?.map { it.id }
+                    ?.filter { it.startsWith(BOUNDARY_LAYER_PREFIX) }
+                    ?.toTypedArray()
+                    ?: return false
+                if (layerIds.isEmpty()) return false
+
+                val screenPoint = map.projection.toScreenLocation(point)
+                val feature = map.queryRenderedFeatures(screenPoint, *layerIds)
+                    .firstOrNull { it.hasProperty("catalog_id") }
+                val catalogId = feature?.getStringProperty("catalog_id")
+                if (!catalogId.isNullOrBlank()) {
+                    latestBoundaryClickCallback.value(catalogId)
+                    return true
+                }
+                return false
+            }
+        }
+    }
+    val markerClickListener = remember {
+        MapLibreMap.OnMarkerClickListener { marker ->
+            val markerPosition = marker.position
+            val point = latestPoints.value
+                .filter { it.title == marker.title }
+                .minByOrNull {
+                    abs(it.latitude - markerPosition.latitude) +
+                        abs(it.longitude - markerPosition.longitude)
+                }
+                ?: latestPoints.value.minByOrNull {
+                    abs(it.latitude - markerPosition.latitude) +
+                        abs(it.longitude - markerPosition.longitude)
+                }
+            point?.let(latestPointClickCallback.value)
+            true
+        }
+    }
     val cameraIdleListener = remember {
         MapLibreMap.OnCameraIdleListener {
             val map = mapReference.value ?: return@OnCameraIdleListener
@@ -70,6 +124,7 @@ actual fun VectorMap(
         mapView.onResume()
         onDispose {
             mapReference.value?.removeOnCameraIdleListener(cameraIdleListener)
+            mapReference.value?.removeOnMapClickListener(mapClickListener)
             mapView.onPause()
             mapView.onStop()
             mapView.onDestroy()
@@ -83,12 +138,23 @@ actual fun VectorMap(
             view.getMapAsync { map ->
                 if (mapReference.value !== map) {
                     mapReference.value?.removeOnCameraIdleListener(cameraIdleListener)
+                    mapReference.value?.removeOnMapClickListener(mapClickListener)
                     map.addOnCameraIdleListener(cameraIdleListener)
+                    map.addOnMapClickListener(mapClickListener)
+                    map.setOnMarkerClickListener(markerClickListener)
                     mapReference.value = map
                 }
 
                 val render = {
-                    renderMapContent(map, points, boundaries)
+                    // MapLibre callbacks may complete after the first
+                    // composition. Always render the newest Compose state so
+                    // the initial world view also receives refreshed markers.
+                    renderMapContent(
+                        context,
+                        map,
+                        latestPoints.value,
+                        latestBoundaries.value,
+                    )
                     val cameraKey = cameraKey(viewport)
                     if (appliedCameraKey.value != cameraKey) {
                         appliedCameraKey.value = cameraKey
@@ -171,6 +237,7 @@ private fun applyViewport(
 }
 
 private fun renderMapContent(
+    context: android.content.Context,
     map: MapLibreMap,
     points: List<MapPoint>,
     boundaries: List<MapBoundary>,
@@ -189,12 +256,15 @@ private fun renderMapContent(
         .filter { it.startsWith(BOUNDARY_SOURCE_PREFIX) }
         .forEach(style::removeSource)
 
+    val checkedInIcon = createMarkerIcon(context, CHECKED_IN_MARKER_COLOR)
+    val searchSelectionIcon = createMarkerIcon(context, SEARCH_SELECTION_MARKER_COLOR)
     points.forEach { point ->
         map.addMarker(
             MarkerOptions()
                 .position(LatLng(point.latitude, point.longitude))
                 .title(point.title)
-                .snippet(point.subtitle),
+                .snippet(point.subtitle)
+                .icon(if (point.isSearchSelection) searchSelectionIcon else checkedInIcon),
         )
     }
 
@@ -241,5 +311,47 @@ private fun renderMapContent(
     }
 }
 
+private fun createMarkerIcon(context: android.content.Context, color: Int): Icon {
+    val density = context.resources.displayMetrics.density
+    val width = (34 * density).toInt().coerceAtLeast(1)
+    val height = (42 * density).toInt().coerceAtLeast(1)
+    val centerX = width / 2f
+    val radius = 11 * density
+
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        this.color = color
+    }
+    val pin = Path().apply {
+        moveTo(centerX, height - 1f)
+        lineTo(centerX - 8 * density, 23 * density)
+        cubicTo(
+            centerX - 14 * density,
+            17 * density,
+            centerX - 11 * density,
+            5 * density,
+            centerX,
+            5 * density,
+        )
+        cubicTo(
+            centerX + 11 * density,
+            5 * density,
+            centerX + 14 * density,
+            17 * density,
+            centerX + 8 * density,
+            23 * density,
+        )
+        close()
+    }
+    canvas.drawPath(pin, paint)
+    paint.color = Color.WHITE
+    canvas.drawCircle(centerX, 14 * density, radius / 2.2f, paint)
+    return IconFactory.getInstance(context).fromBitmap(bitmap)
+}
+
 private const val BOUNDARY_SOURCE_PREFIX = "achievement-boundary-source-"
 private const val BOUNDARY_LAYER_PREFIX = "achievement-boundary-layer-"
+private val CHECKED_IN_MARKER_COLOR = Color.rgb(37, 99, 235)
+private val SEARCH_SELECTION_MARKER_COLOR = Color.rgb(234, 88, 12)

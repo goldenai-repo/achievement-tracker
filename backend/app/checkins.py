@@ -40,6 +40,9 @@ def create_checkin(db: Session, current_user: CurrentUser, payload: CheckInCreat
             detail="Catalog entity not found",
         )
 
+    # Countries with first-level administrative data must be checked in at
+    # the admin-1 level. A country marker can still summarize visited regions
+    # and open the form with the country preselected.
     if entity.kind == "country":
         has_admin1 = db.scalar(
             select(func.count())
