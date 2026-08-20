@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.boundaries import geojson_bounds, normalize_admin1_geojson
+from app.boundaries import geojson_bounds, geometry_center, normalize_admin1_geojson
 from app.db import CatalogEntity
 
 
@@ -58,6 +58,17 @@ def test_normalize_admin1_adds_application_catalog_id() -> None:
         "east": 121.0,
         "west": 120.0,
     }
+
+
+def test_geometry_center_provides_latitude_longitude_for_map_markers() -> None:
+    center = geometry_center(
+        {
+            "type": "Polygon",
+            "coordinates": [[[120.0, 30.0], [122.0, 30.0], [122.0, 32.0], [120.0, 30.0]]],
+        }
+    )
+
+    assert center == (30.666666666666668, 121.33333333333333)
 
 
 def test_normalize_admin1_applies_manual_override_without_replacing_source_name() -> None:

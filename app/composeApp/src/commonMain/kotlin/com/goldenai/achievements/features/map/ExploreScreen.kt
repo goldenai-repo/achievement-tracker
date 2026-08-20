@@ -219,6 +219,7 @@ fun ExploreScreen(onCheckIn: (CheckInSelection) -> Unit) {
             boundaries = boundaries,
             styleUrl = mapStyleUrl,
             viewport = viewport,
+            cameraResetKey = viewModel.cameraResetKey,
             onViewportChanged = viewModel::recordMapViewport,
             onPointClick = { point ->
                 val place = when {
@@ -307,7 +308,6 @@ fun ExploreScreen(onCheckIn: (CheckInSelection) -> Unit) {
                 Button(
                     onClick = {
                         selectedMapSelection = null
-                        viewModel.clearSearchContextForCheckIn()
                         onCheckIn(selection)
                     },
                     modifier = Modifier.fillMaxWidth(),

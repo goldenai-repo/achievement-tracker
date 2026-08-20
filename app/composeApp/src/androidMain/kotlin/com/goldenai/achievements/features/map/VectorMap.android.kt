@@ -41,6 +41,7 @@ actual fun VectorMap(
     boundaries: List<MapBoundary>,
     styleUrl: String,
     viewport: MapViewport?,
+    cameraResetKey: Long,
     onViewportChanged: (MapViewport) -> Unit,
     onPointClick: (MapPoint) -> Unit,
     onBoundaryClick: (String) -> Unit,
@@ -155,7 +156,7 @@ actual fun VectorMap(
                         latestPoints.value,
                         latestBoundaries.value,
                     )
-                    val cameraKey = cameraKey(viewport)
+                    val cameraKey = cameraKey(viewport, cameraResetKey)
                     if (appliedCameraKey.value != cameraKey) {
                         appliedCameraKey.value = cameraKey
                         applyViewport(view, map, viewport)
@@ -176,8 +177,11 @@ actual fun VectorMap(
     )
 }
 
-private fun cameraKey(viewport: MapViewport?): String = viewport?.let {
-    listOf(
+private fun cameraKey(viewport: MapViewport?, cameraResetKey: Long): String = buildString {
+    append(cameraResetKey)
+    append("/")
+    viewport?.let {
+        append(listOf(
         it.latitude,
         it.longitude,
         it.zoom,
@@ -185,8 +189,9 @@ private fun cameraKey(viewport: MapViewport?): String = viewport?.let {
         it.south,
         it.east,
         it.west,
-    ).joinToString("/")
-} ?: "world"
+        ).joinToString("/"))
+    } ?: append("world")
+}
 
 private fun applyViewport(
     mapView: MapView,

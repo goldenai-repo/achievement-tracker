@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.goldenai.achievements.features.api.AchievementApi
 import com.goldenai.achievements.features.api.CatalogPlace
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,6 +71,10 @@ class ExploreViewModel(
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** Forces the map renderer to reapply the world camera after Reset. */
+    var cameraResetKey by mutableStateOf(0L)
+        private set
+
     /** Stores the latest camera bounds for the upcoming viewport data loader. */
     fun recordMapViewport(viewport: MapViewport) {
         latestMapViewport = viewport
@@ -114,6 +119,10 @@ class ExploreViewModel(
                 limit = 500,
             )
         } catch (t: Throwable) {
+            // Cancelling a previous search is expected when the user types,
+            // dismisses the field, or leaves Explore. It must not be shown as
+            // a red API error (for example: "StandaloneCoroutine was cancelled").
+            if (t is CancellationException) throw t
             error = t.message ?: "Could not load countries."
         } finally {
             countryLoading = false
@@ -176,6 +185,7 @@ class ExploreViewModel(
                 limit = 500,
             )
         } catch (t: Throwable) {
+            if (t is CancellationException) throw t
             error = t.message ?: "Could not load regions."
         } finally {
             regionLoading = false
@@ -205,11 +215,6 @@ class ExploreViewModel(
         clearCountry()
     }
 
-    /** Removes the temporary Explore search context before opening Check-in. */
-    fun clearSearchContextForCheckIn() {
-        clearCountry()
-    }
-
     fun dismissDropdowns() {
         countryDropdownOpen = false
         regionDropdownOpen = false
@@ -233,6 +238,7 @@ class ExploreViewModel(
         step = ExploreStep.COUNTRY_PICKER
         level = ExploreLevel.WORLD
         error = null
+        cameraResetKey += 1
     }
 
     private fun loadRegions(country: CatalogPlace) {

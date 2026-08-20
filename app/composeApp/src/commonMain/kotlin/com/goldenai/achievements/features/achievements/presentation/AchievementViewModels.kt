@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -416,6 +417,7 @@ class CheckInFormViewModel(
             try {
                 countries = api.searchCatalog("country", query, limit = 500)
             } catch (t: Throwable) {
+                if (t is CancellationException) throw t
                 error = t.message ?: "Could not load places."
             } finally {
                 countryLoading = false
@@ -438,6 +440,7 @@ class CheckInFormViewModel(
                 regions = api.searchCatalog("admin1", query, parentId = parentId, limit = 500)
                 onLoaded?.invoke()
             } catch (t: Throwable) {
+                if (t is CancellationException) throw t
                 error = t.message ?: "Could not load regions."
             } finally {
                 regionLoading = false

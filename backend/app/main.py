@@ -152,6 +152,19 @@ def _boundary_asset_name(entity: CatalogEntity) -> Optional[str]:
 
 
 def _local_boundary_bounds(entity: CatalogEntity) -> Optional[dict[str, float]]:
+    # Cloud deployments persist bounds in catalog metadata so the API does
+    # not need the local boundary directory. Keep the local GeoJSON fallback
+    # for development and for older catalog rows.
+    persisted_bounds = (entity.metadata_json or {}).get("bounds")
+    if isinstance(persisted_bounds, dict):
+        try:
+            return {
+                key: float(persisted_bounds[key])
+                for key in ("north", "south", "east", "west")
+            }
+        except (KeyError, TypeError, ValueError):
+            pass
+
     asset_name = _boundary_asset_name(entity)
     if asset_name is None:
         return None

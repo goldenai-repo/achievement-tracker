@@ -44,6 +44,8 @@ expect fun VectorMap(
     boundaries: List<MapBoundary> = emptyList(),
     styleUrl: String,
     viewport: MapViewport? = null,
+    /** Changes whenever the caller wants to force a camera reset. */
+    cameraResetKey: Long = 0L,
     onViewportChanged: (MapViewport) -> Unit = {},
     onPointClick: (MapPoint) -> Unit = {},
     onBoundaryClick: (String) -> Unit = {},
