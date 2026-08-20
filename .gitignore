@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.geoboundaries.example
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -18,3 +19,4 @@ service-account*.json
 data/raw/
 data/normalized/
 data/reports/
+data/cloud-artifacts/

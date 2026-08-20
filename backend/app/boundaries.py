@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterator
+from math import fsum
 from typing import Any, Iterable
 
 from app.db import CatalogEntity
@@ -86,6 +87,116 @@ def geometry_bounds(geometry: dict[str, Any] | None) -> dict[str, float] | None:
         "east": max(longitudes),
         "west": min(longitudes),
     }
+
+
+def geometry_center(geometry: dict[str, Any] | None) -> tuple[float, float] | None:
+    """Return a representative point from the largest polygon in a geometry."""
+    focus = geometry_focus(geometry)
+    if focus is not None:
+        return focus["latitude"], focus["longitude"]
+    if not geometry:
+        return None
+    if geometry.get("type") == "GeometryCollection":
+        positions = (
+            position
+            for child in geometry.get("geometries", [])
+            for position in _positions((child or {}).get("coordinates", []))
+        )
+    else:
+        positions = _positions(geometry.get("coordinates", []))
+    values = list(positions)
+    if not values:
+        return None
+    longitudes, latitudes = zip(*values)
+    return fsum(latitudes) / len(latitudes), fsum(longitudes) / len(longitudes)
+
+
+def _polygon_rings(geometry: dict[str, Any] | None) -> Iterator[list[list[float]]]:
+    if not geometry:
+        return
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+    if geometry_type == "Polygon" and isinstance(coordinates, list) and coordinates:
+        yield coordinates[0]
+    elif geometry_type == "MultiPolygon" and isinstance(coordinates, list):
+        for polygon in coordinates:
+            if polygon:
+                yield polygon[0]
+    elif geometry_type == "GeometryCollection":
+        for child in geometry.get("geometries", []):
+            yield from _polygon_rings(child)
+
+
+def _ring_focus(ring: list[list[float]]) -> tuple[float, float, float, dict[str, float]] | None:
+    points = [
+        (float(point[0]), float(point[1]))
+        for point in ring
+        if isinstance(point, list)
+        and len(point) >= 2
+        and isinstance(point[0], (int, float))
+        and isinstance(point[1], (int, float))
+    ]
+    if len(points) < 3:
+        return None
+    if points[0] != points[-1]:
+        points.append(points[0])
+    cross_values = [
+        points[index][0] * points[index + 1][1]
+        - points[index + 1][0] * points[index][1]
+        for index in range(len(points) - 1)
+    ]
+    area_twice = fsum(cross_values)
+    if abs(area_twice) < 1e-12:
+        longitude = fsum(point[0] for point in points[:-1]) / (len(points) - 1)
+        latitude = fsum(point[1] for point in points[:-1]) / (len(points) - 1)
+    else:
+        longitude = fsum(
+            (points[index][0] + points[index + 1][0]) * cross_values[index]
+            for index in range(len(points) - 1)
+        ) / (3 * area_twice)
+        latitude = fsum(
+            (points[index][1] + points[index + 1][1]) * cross_values[index]
+            for index in range(len(points) - 1)
+        ) / (3 * area_twice)
+    longitudes, latitudes = zip(*points[:-1])
+    bounds = {
+        "north": max(latitudes),
+        "south": min(latitudes),
+        "east": max(longitudes),
+        "west": min(longitudes),
+    }
+    return abs(area_twice), latitude, longitude, bounds
+
+
+def geometry_focus(geometry: dict[str, Any] | None) -> dict[str, float] | None:
+    """Return center and viewport bounds for the largest polygon component.
+
+    Full geometry bounds can be misleading for countries with remote islands
+    or antimeridian-spanning territories. The largest polygon is a stable,
+    dependency-free approximation of the primary landmass for the default map
+    view. The complete geometry is still preserved in the GeoJSON asset.
+    """
+    candidates = [focus for ring in _polygon_rings(geometry) if (focus := _ring_focus(ring))]
+    if not candidates:
+        return None
+    _, latitude, longitude, bounds = max(candidates, key=lambda item: item[0])
+    return {"latitude": latitude, "longitude": longitude, **bounds}
+
+
+def geojson_focus(document: dict[str, Any]) -> dict[str, float] | None:
+    """Return the largest-polygon focus across a GeoJSON FeatureCollection."""
+    candidates = []
+    for feature in document.get("features", []):
+        geometry = feature.get("geometry") or {}
+        candidates.extend(
+            focus
+            for ring in _polygon_rings(geometry)
+            if (focus := _ring_focus(ring))
+        )
+    if not candidates:
+        return None
+    _, latitude, longitude, bounds = max(candidates, key=lambda item: item[0])
+    return {"latitude": latitude, "longitude": longitude, **bounds}
 
 
 def geojson_bounds(
