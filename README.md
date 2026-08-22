@@ -121,6 +121,9 @@ See [`docs/IMPLEMENTATION_PLAN_WEB_PYTHON.md`](docs/IMPLEMENTATION_PLAN_WEB_PYTH
 4. GitHub and Git CLI configuration
 5. Local development environment
 
+For the current backend startup commands, including local SQLite mode and
+Cloud SQL integration mode, see [`docs/LOCAL_BACKEND.md`](docs/LOCAL_BACKEND.md).
+
 ### Quick Start (after full setup)
 
 ```bash
