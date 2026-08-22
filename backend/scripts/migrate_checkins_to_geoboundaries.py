@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.boundaries import _normalized
@@ -31,6 +32,14 @@ from app.db import Base, CatalogEntity, User, UserCheckin, UserUnlock
 def _engine(database_url: str):
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     return create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+
+
+def _safe_database_url(database_url: str) -> str:
+    """Keep generated reports from persisting database passwords."""
+    try:
+        return make_url(database_url).render_as_string(hide_password=True)
+    except Exception:
+        return "<redacted>"
 
 
 def _utc(value: datetime) -> datetime:
@@ -195,8 +204,8 @@ def main() -> None:
         ]
         if (unmapped_checkins or blocked) and not args.allow_unmapped:
             result = {
-                "source_database_url": args.source_database_url,
-                "target_database_url": args.target_database_url,
+                "source_database_url": _safe_database_url(args.source_database_url),
+                "target_database_url": _safe_database_url(args.target_database_url),
                 "dry_run": args.dry_run,
                 "source_catalog_entities": len(source_entities),
                 "target_catalog_entities": len(target_entities),
@@ -250,8 +259,8 @@ def main() -> None:
             target.commit()
 
     result = {
-        "source_database_url": args.source_database_url,
-        "target_database_url": args.target_database_url,
+        "source_database_url": _safe_database_url(args.source_database_url),
+        "target_database_url": _safe_database_url(args.target_database_url),
         "dry_run": args.dry_run,
         "source_catalog_entities": len(source_entities),
         "target_catalog_entities": len(target_entities),
