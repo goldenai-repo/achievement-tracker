@@ -33,7 +33,10 @@ actual fun parseIsoUtc(value: String): Long = parseUtcIso(value)
 
 actual val mapStyleUrl: String = "https://tiles.openfreemap.org/styles/bright"
 
-/** Pure-Kotlin UTC helpers avoid brittle NSTimeZone interop on Kotlin/Native. */
+/**
+ * Pure-Kotlin UTC helpers avoid brittle NSTimeZone interop on Kotlin/Native.
+ * Parsing mirrors Android's Instant/OffsetDateTime/LocalDateTime fallbacks.
+ */
 internal fun formatUtcIso(epochMillis: Long): String {
     val parts = utcPartsFromEpochMillis(epochMillis)
     return buildString {
@@ -55,18 +58,51 @@ internal fun formatUtcIso(epochMillis: Long): String {
 }
 
 internal fun parseUtcIso(value: String): Long {
-    val match = UTC_PATTERN.matchEntire(value.trim())
+    val trimmed = value.trim()
+    val match = UTC_PATTERN.matchEntire(trimmed)
         ?: error("Invalid ISO date: $value")
-    val (year, month, day, hour, minute, second, millis) = match.destructured
-    var totalSeconds = daysSinceEpoch(year.toInt(), month.toInt(), day.toInt()) * 86_400L
-    totalSeconds += hour.toInt() * 3_600L
-    totalSeconds += minute.toInt() * 60L
-    totalSeconds += second.toInt()
-    return totalSeconds * 1_000L + millis.toInt()
+    val year = match.groupValues[1].toInt()
+    val month = match.groupValues[2].toInt()
+    val day = match.groupValues[3].toInt()
+    val hour = match.groupValues[4].toInt()
+    val minute = match.groupValues[5].toInt()
+    val second = match.groupValues[6].toInt()
+    val fraction = match.groupValues[7]
+    val offset = match.groupValues[8]
+    val millis = when {
+        fraction.isEmpty() -> 0
+        // Skip leading '.' from the capture group.
+        fraction.length >= 4 -> fraction.drop(1).take(3).toInt()
+        else -> fraction.drop(1).padEnd(3, '0').toInt()
+    }
+    var totalSeconds = daysSinceEpoch(year, month, day) * 86_400L
+    totalSeconds += hour * 3_600L
+    totalSeconds += minute * 60L
+    totalSeconds += second
+    totalSeconds -= parseOffsetSeconds(offset)
+    return totalSeconds * 1_000L + millis
 }
 
+/**
+ * Accepts the same families Android Instant/OffsetDateTime/LocalDateTime accept:
+ * with/without fractional seconds, Z or +00:00 / -05:00 offsets, or naive UTC.
+ */
 private val UTC_PATTERN =
-    Regex("""(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{3})Z""")
+    Regex(
+        """(\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2}):(\d{2})(\.\d+)?""" +
+            """(?:Z|z|([+-]\d{2}:?\d{2}))?""",
+    )
+
+/** Converts "+05:30" / "+0530" / "-08:00" into seconds east of UTC. */
+private fun parseOffsetSeconds(offset: String): Long {
+    if (offset.isEmpty()) return 0L
+    val sign = if (offset[0] == '-') -1 else 1
+    val digits = offset.drop(1).replace(":", "")
+    require(digits.length == 4) { "Invalid timezone offset: $offset" }
+    val hours = digits.substring(0, 2).toInt()
+    val minutes = digits.substring(2, 4).toInt()
+    return sign * (hours * 3_600L + minutes * 60L)
+}
 
 private data class UtcParts(
     val year: Int,
@@ -80,18 +116,46 @@ private data class UtcParts(
 
 private fun utcPartsFromEpochMillis(epochMillis: Long): UtcParts {
     var rem = epochMillis
-    val millis = (rem % 1_000).toInt().also { rem /= 1_000 }
-    val second = (rem % 60).toInt().also { rem /= 60 }
-    val minute = (rem % 60).toInt().also { rem /= 60 }
-    val hour = (rem % 24).toInt().also { rem /= 24 }
+    // Normalize negative remainders so pre-epoch values stay correct.
+    var millis = (rem % 1_000).toInt()
+    rem /= 1_000
+    if (millis < 0) {
+        millis += 1_000
+        rem -= 1
+    }
+    var second = (rem % 60).toInt()
+    rem /= 60
+    if (second < 0) {
+        second += 60
+        rem -= 1
+    }
+    var minute = (rem % 60).toInt()
+    rem /= 60
+    if (minute < 0) {
+        minute += 60
+        rem -= 1
+    }
+    var hour = (rem % 24).toInt()
+    rem /= 24
+    if (hour < 0) {
+        hour += 24
+        rem -= 1
+    }
     var days = rem.toInt()
 
     var year = 1970
-    while (true) {
-        val daysInYear = if (isLeapYear(year)) 366 else 365
-        if (days < daysInYear) break
-        days -= daysInYear
-        year++
+    if (days >= 0) {
+        while (true) {
+            val daysInYear = if (isLeapYear(year)) 366 else 365
+            if (days < daysInYear) break
+            days -= daysInYear
+            year++
+        }
+    } else {
+        while (days < 0) {
+            year--
+            days += if (isLeapYear(year)) 366 else 365
+        }
     }
 
     val monthLengths = intArrayOf(31, if (isLeapYear(year)) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
@@ -109,6 +173,11 @@ private fun daysSinceEpoch(year: Int, month: Int, day: Int): Long {
     var days = 0L
     for (y in 1970 until year) {
         days += if (isLeapYear(y)) 366 else 365
+    }
+    if (year < 1970) {
+        for (y in year until 1970) {
+            days -= if (isLeapYear(y)) 366 else 365
+        }
     }
     val monthLengths = intArrayOf(31, if (isLeapYear(year)) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
     for (index in 0 until month - 1) {

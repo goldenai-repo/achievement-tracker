@@ -3,6 +3,7 @@ package com.goldenai.achievements.features.api
 import com.goldenai.achievements.features.auth.data.AuthRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -24,14 +25,24 @@ private val json = Json {
 actual fun createAchievementApi(auth: AuthRepository, baseUrl: String): AchievementApi =
     IosAchievementApi(auth, baseUrl)
 
+/**
+ * Darwin/Ktor client mirroring [AndroidAchievementApi] endpoints, bearer auth,
+ * and timeouts (15s connect / 20s request).
+ */
 private class IosAchievementApi(
     private val auth: AuthRepository,
     baseUrl: String,
 ) : AchievementApi {
     private val root = baseUrl.trimEnd('/')
-    private val client = HttpClient(Darwin)
+    private val client = HttpClient(Darwin) {
+        install(HttpTimeout) {
+            connectTimeoutMillis = 15_000
+            requestTimeoutMillis = 20_000
+            socketTimeoutMillis = 20_000
+        }
+    }
 
-    override suspend fun getMe(): MeResponse = request(
+    override suspend fun getMe(): MeResponse = decode(
         method = "GET",
         path = "/v1/me",
         serializer = MeResponse.serializer(),
@@ -42,7 +53,7 @@ private class IosAchievementApi(
         query: String?,
         parentId: String?,
         limit: Int,
-    ): List<CatalogPlace> = request(
+    ): List<CatalogPlace> = decode(
         method = "GET",
         path = "/v1/catalog?kind=${encode(kind)}" +
             query?.takeIf { it.isNotBlank() }?.let { "&q=${encode(it)}" }.orEmpty() +
@@ -51,49 +62,49 @@ private class IosAchievementApi(
         serializer = kotlinx.serialization.builtins.ListSerializer(CatalogPlace.serializer()),
     )
 
-    override suspend fun listCheckins(limit: Int): List<CheckInResponse> = request(
+    override suspend fun listCheckins(limit: Int): List<CheckInResponse> = decode(
         method = "GET",
         path = "/v1/checkins?limit=$limit",
         serializer = kotlinx.serialization.builtins.ListSerializer(CheckInResponse.serializer()),
     )
 
-    override suspend fun listAchievements(limit: Int): List<AchievementGroupResponse> = request(
+    override suspend fun listAchievements(limit: Int): List<AchievementGroupResponse> = decode(
         method = "GET",
         path = "/v1/achievements?limit=$limit",
         serializer = kotlinx.serialization.builtins.ListSerializer(AchievementGroupResponse.serializer()),
     )
 
-    override suspend fun createCheckIn(payload: CheckInRequest): CheckInResponse = request(
+    override suspend fun createCheckIn(request: CheckInRequest): CheckInResponse = decode(
         method = "POST",
         path = "/v1/checkins",
-        body = json.encodeToString(CheckInRequest.serializer(), payload),
+        body = json.encodeToString(CheckInRequest.serializer(), request),
         serializer = CheckInResponse.serializer(),
     )
 
     override suspend fun updateCheckIn(
         checkinId: String,
-        payload: CheckInUpdateRequest,
-    ): CheckInResponse = request(
+        request: CheckInUpdateRequest,
+    ): CheckInResponse = decode(
         method = "PATCH",
         path = "/v1/checkins/${encode(checkinId)}",
-        body = json.encodeToString(CheckInUpdateRequest.serializer(), payload),
+        body = json.encodeToString(CheckInUpdateRequest.serializer(), request),
         serializer = CheckInResponse.serializer(),
     )
 
     override suspend fun deleteCheckIn(checkinId: String) {
-        requestNoContent(
+        decodeNoContent(
             method = "DELETE",
             path = "/v1/checkins/${encode(checkinId)}",
         )
     }
 
-    override suspend fun summary(): SummaryResponse = request(
+    override suspend fun summary(): SummaryResponse = decode(
         method = "GET",
         path = "/v1/summary",
         serializer = SummaryResponse.serializer(),
     )
 
-    private suspend fun <T> request(
+    private suspend fun <T> decode(
         method: String,
         path: String,
         body: String? = null,
@@ -104,7 +115,7 @@ private class IosAchievementApi(
         return json.decodeFromString(serializer, response)
     }
 
-    private suspend fun requestNoContent(
+    private suspend fun decodeNoContent(
         method: String,
         path: String,
     ) {
@@ -117,7 +128,8 @@ private class IosAchievementApi(
         path: String,
         body: String?,
     ): Pair<Int, String> {
-        val token = auth.idToken() ?: throw IllegalStateException("Sign in to use the Achievement Tracker API.")
+        val token = auth.idToken()
+            ?: throw IllegalStateException("Sign in to use the Achievement Tracker API.")
         val url = root + path
         val response = when (method) {
             "GET" -> client.get(url) {
