@@ -16,6 +16,16 @@ kotlin {
         }
     }
 
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64(),
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "ComposeApp"
+            isStatic = true
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -37,6 +47,11 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.sqldelight.android.driver)
             implementation(libs.maplibre.android)
+        }
+        iosMain.dependencies {
+            implementation(libs.sqldelight.native.driver)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.darwin)
         }
     }
 }

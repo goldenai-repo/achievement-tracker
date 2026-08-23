@@ -14,8 +14,12 @@ fun countryFlagEmoji(countryCode: String?): String {
     }
 
     // Regional indicator symbols are Unicode code points U+1F1E6..U+1F1FF.
-    return buildString {
-        appendCodePoint(0x1F1E6 + (code[0].code - 'A'.code))
-        appendCodePoint(0x1F1E6 + (code[1].code - 'A'.code))
-    }
+    return regionalIndicator(code[0]) + regionalIndicator(code[1])
+}
+
+private fun regionalIndicator(letter: Char): String {
+    val codePoint = 0x1F1E6 + (letter.code - 'A'.code)
+    val high = ((codePoint - 0x10000) ushr 10) + 0xD800
+    val low = ((codePoint - 0x10000) and 0x3FF) + 0xDC00
+    return charArrayOf(high.toChar(), low.toChar()).concatToString()
 }
