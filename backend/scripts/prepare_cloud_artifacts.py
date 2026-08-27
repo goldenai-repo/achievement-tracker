@@ -172,7 +172,11 @@ def main() -> None:
             if boundary:
                 metadata = dict(record["metadata"])
                 metadata["boundary_object"] = f"boundaries/{boundary['file_name']}"
-                if boundary.get("bounds"):
+                # Keep the catalog's focused country bounds when they are
+                # already present. The ADM1 collection bounds include remote
+                # territories (and can cross the antimeridian), which would
+                # make a country camera zoom out to nearly the world view.
+                if boundary.get("bounds") and not metadata.get("bounds"):
                     metadata["bounds"] = boundary["bounds"]
                 if args.boundary_base_url:
                     metadata["boundary_geojson_url"] = (
