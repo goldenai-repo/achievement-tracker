@@ -6,5 +6,7 @@ import com.goldenai.achievements.db.AchievementDatabase
 
 actual class DriverFactory {
     actual fun createDriver(): SqlDriver =
-        NativeSqliteDriver(AchievementDatabase.Schema, "achievements.db")
+        // Match Android's versioned file name so schema bumps stay intentional
+        // on both platforms until a formal SQLDelight migration is added.
+        NativeSqliteDriver(AchievementDatabase.Schema, "achievements-api-v1.db")
 }
