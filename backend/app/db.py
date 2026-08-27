@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
+from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import get_settings
@@ -85,8 +86,39 @@ class UserUnlock(Base):
 
 
 def _create_engine():
-    database_url = get_settings().database_url
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    settings = get_settings()
+    connect_args = {}
+
+    if settings.instance_unix_socket:
+        missing = [
+            name
+            for name, value in (
+                ("DB_USER", settings.db_user),
+                ("DB_PASSWORD", settings.db_password),
+                ("DB_NAME", settings.db_name),
+            )
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Cloud SQL configuration is incomplete; missing " + ", ".join(missing)
+            )
+
+        # psycopg accepts the Cloud Run socket directory as host and appends
+        # the PostgreSQL socket filename itself. URL.create safely handles
+        # special characters in passwords.
+        database_url = URL.create(
+            drivername="postgresql+psycopg",
+            username=settings.db_user,
+            password=settings.db_password,
+            database=settings.db_name,
+        )
+        connect_args["host"] = settings.instance_unix_socket.rstrip("/")
+    else:
+        database_url = settings.database_url
+        if database_url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+
     return create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
 
 

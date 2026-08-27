@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -59,6 +59,11 @@ def get_boundary(asset_name: str) -> FileResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Boundary not found")
     path = Path(settings.boundary_data_dir) / asset_name
     if not path.is_file():
+        if settings.boundary_base_url:
+            return RedirectResponse(
+                url=f"{settings.boundary_base_url.rstrip('/')}/{asset_name}",
+                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Boundary not found")
     return FileResponse(path, media_type="application/geo+json")
 
@@ -136,6 +141,10 @@ def _local_boundary_url(request: Request, entity: CatalogEntity) -> Optional[str
     asset_name = _boundary_asset_name(entity)
     if asset_name is None:
         return None
+
+    if settings.boundary_base_url:
+        return f"{settings.boundary_base_url.rstrip('/')}/{asset_name}"
+
     if not (Path(settings.boundary_data_dir) / asset_name).is_file():
         return None
     return str(request.url_for("get_boundary", asset_name=asset_name))
