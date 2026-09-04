@@ -30,6 +30,20 @@ private class AndroidAchievementApi(
         serializer = MeResponse.serializer(),
     )
 
+    override suspend fun updateProfile(payload: ProfileUpdateRequest): MeResponse = request(
+        method = "PATCH",
+        path = "/v1/me",
+        body = json.encodeToString(ProfileUpdateRequest.serializer(), payload),
+        serializer = MeResponse.serializer(),
+    )
+
+    override suspend fun deleteAccount() {
+        requestNoContent(
+            method = "DELETE",
+            path = "/v1/me",
+        )
+    }
+
     override suspend fun searchCatalog(
         kind: String,
         query: String?,
@@ -84,6 +98,12 @@ private class AndroidAchievementApi(
         method = "GET",
         path = "/v1/summary",
         serializer = SummaryResponse.serializer(),
+    )
+
+    override suspend fun getGeographyRanking(limit: Int): GeographyRankingResponse = request(
+        method = "GET",
+        path = "/v1/rankings/geography?limit=$limit",
+        serializer = GeographyRankingResponse.serializer(),
     )
 
     private suspend fun <T> request(

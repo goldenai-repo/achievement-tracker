@@ -13,17 +13,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.lifecycle.ViewModel
@@ -34,6 +41,7 @@ import com.goldenai.achievements.di.AppGraph
 import com.goldenai.achievements.features.achievements.data.AchievementRepository
 import com.goldenai.achievements.features.api.MeResponse
 import com.goldenai.achievements.features.auth.data.AppUser
+import com.goldenai.achievements.core.AppResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +76,12 @@ class ProfileViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _savingUsername = MutableStateFlow(false)
+    val savingUsername: StateFlow<Boolean> = _savingUsername.asStateFlow()
+
+    private val _deletingAccount = MutableStateFlow(false)
+    val deletingAccount: StateFlow<Boolean> = _deletingAccount.asStateFlow()
+
     fun refresh() {
         if (_refreshing.value) return
         viewModelScope.launch {
@@ -90,8 +104,55 @@ class ProfileViewModel(
 
     fun syncNow() = AppGraph.sync.requestSync()
 
+    fun saveUsername(username: String, onSuccess: () -> Unit = {}) {
+        val normalized = username.trim().replace(Regex("\\s+"), " ")
+        if (normalized.length !in 3..30) {
+            _error.value = "Username must be between 3 and 30 characters."
+            return
+        }
+        if (_savingUsername.value) return
+        viewModelScope.launch {
+            _savingUsername.value = true
+            _error.value = null
+            try {
+                _profile.value = AppGraph.api.updateProfile(
+                    com.goldenai.achievements.features.api.ProfileUpdateRequest(normalized),
+                )
+                onSuccess()
+            } catch (t: Throwable) {
+                _error.value = t.message ?: "Could not save username."
+            } finally {
+                _savingUsername.value = false
+            }
+        }
+    }
+
     fun signOut() {
         viewModelScope.launch { AppGraph.auth.signOut() }
+    }
+
+    fun deleteAccount(password: String, onSuccess: () -> Unit = {}) {
+        if (_deletingAccount.value) return
+        viewModelScope.launch {
+            _deletingAccount.value = true
+            _error.value = null
+            try {
+                when (val authResult = AppGraph.auth.reauthenticate(password)) {
+                    is AppResult.Err -> _error.value = authResult.message
+                    is AppResult.Ok -> {
+                        AppGraph.api.deleteAccount()
+                        repo.clearAllLocalData()
+                        AppGraph.auth.signOut()
+                        _profile.value = null
+                        onSuccess()
+                    }
+                }
+            } catch (t: Throwable) {
+                _error.value = t.message ?: "Could not delete account."
+            } finally {
+                _deletingAccount.value = false
+            }
+        }
     }
 }
 
@@ -112,9 +173,19 @@ fun ProfileScreen(
     val syncError by vm.syncError.collectAsState()
     val lastSyncAt by vm.lastSyncAt.collectAsState()
     val error by vm.error.collectAsState()
+    val savingUsername by vm.savingUsername.collectAsState()
+    val deletingAccount by vm.deletingAccount.collectAsState()
+    var editingUsername by remember { mutableStateOf(false) }
+    var usernameDraft by remember { mutableStateOf("") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var deletePassword by remember { mutableStateOf("") }
 
     LaunchedEffect(user?.uid) {
         vm.refresh()
+    }
+
+    LaunchedEffect(profile?.displayName) {
+        if (!editingUsername) usernameDraft = profile?.displayName.orEmpty()
     }
 
     val remoteSummary = if (user != null) summary else null
@@ -134,7 +205,44 @@ fun ProfileScreen(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Profile", style = MaterialTheme.typography.headlineMedium)
-                    Text(displayName, style = MaterialTheme.typography.titleMedium)
+                    if (editingUsername && user != null) {
+                        OutlinedTextField(
+                            value = usernameDraft,
+                            onValueChange = { usernameDraft = it },
+                            label = { Text("Username") },
+                            singleLine = true,
+                            enabled = !savingUsername,
+                            supportingText = { Text("3–30 characters") },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    vm.saveUsername(usernameDraft) { editingUsername = false }
+                                },
+                                enabled = !savingUsername,
+                            ) {
+                                Text(if (savingUsername) "Saving…" else "Save")
+                            }
+                            TextButton(
+                                onClick = {
+                                    usernameDraft = profile?.displayName.orEmpty()
+                                    editingUsername = false
+                                },
+                                enabled = !savingUsername,
+                            ) { Text("Cancel") }
+                        }
+                    } else {
+                        Text(displayName, style = MaterialTheme.typography.titleMedium)
+                        if (user != null) {
+                            TextButton(
+                                onClick = {
+                                    usernameDraft = profile?.displayName.orEmpty()
+                                    editingUsername = true
+                                },
+                            ) { Text("Edit username") }
+                        }
+                    }
                     Text(
                         email ?: "Local-only guest profile",
                         style = MaterialTheme.typography.bodySmall,
@@ -186,12 +294,59 @@ fun ProfileScreen(
                 onSignIn = onSignIn,
                 onRegister = onRegister,
                 onSignOut = vm::signOut,
+                deletingAccount = deletingAccount,
+                onDeleteAccount = { showDeleteDialog = true },
             )
         }
 
         error?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error) }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!deletingAccount) {
+                    showDeleteDialog = false
+                    deletePassword = ""
+                }
+            },
+            title = { Text("Delete account?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This permanently deletes your account, cloud check-ins, and this device's cached data.")
+                    OutlinedTextField(
+                        value = deletePassword,
+                        onValueChange = { deletePassword = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        enabled = !deletingAccount,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.deleteAccount(deletePassword) {
+                            showDeleteDialog = false
+                            deletePassword = ""
+                        }
+                    },
+                    enabled = deletePassword.isNotEmpty() && !deletingAccount,
+                ) { Text(if (deletingAccount) "Deleting…" else "Delete permanently") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        deletePassword = ""
+                    },
+                    enabled = !deletingAccount,
+                ) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -243,6 +398,8 @@ private fun SyncCard(
     onSignIn: () -> Unit,
     onRegister: () -> Unit,
     onSignOut: () -> Unit,
+    deletingAccount: Boolean,
+    onDeleteAccount: () -> Unit,
 ) {
     Card(
         colors = CardDefaults.cardColors(
@@ -304,6 +461,15 @@ private fun SyncCard(
                         OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
                             Text("Sign out")
                         }
+                    }
+                    TextButton(
+                        onClick = onDeleteAccount,
+                        enabled = !syncing && !deletingAccount,
+                    ) {
+                        Text(
+                            if (deletingAccount) "Deleting account…" else "Delete account",
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }

@@ -62,6 +62,14 @@ class AchievementRepository(
     fun watchUniqueEntityCount(): Flow<Long> =
         q.countUniqueEntities().asFlow().mapToOne(Dispatchers.Default)
 
+    /** Clears the single-device cache after a user permanently deletes their account. */
+    suspend fun clearAllLocalData() = withContext(Dispatchers.Default) {
+        db.transaction {
+            q.deleteAll()
+            q.setMeta("lastSyncedUid", "")
+        }
+    }
+
     suspend fun get(id: String): Achievement? = withContext(Dispatchers.Default) {
         q.selectById(id).executeAsOneOrNull()?.toModel()
     }
