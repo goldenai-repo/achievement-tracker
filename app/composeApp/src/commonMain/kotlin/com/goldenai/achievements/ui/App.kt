@@ -24,6 +24,7 @@ import com.goldenai.achievements.features.auth.presentation.RegisterScreen
 import com.goldenai.achievements.features.auth.presentation.SignInScreen
 import com.goldenai.achievements.features.map.ExploreScreen
 import com.goldenai.achievements.features.profile.presentation.ProfileScreen
+import com.goldenai.achievements.features.ranking.presentation.RankingScreen
 import com.goldenai.achievements.ui.theme.AppTheme
 import kotlinx.serialization.Serializable
 
@@ -38,6 +39,9 @@ object ExploreRoute
 
 @Serializable
 object AccountRoute
+
+@Serializable
+object RankingRoute
 
 @Serializable
 data class FormRoute(val id: String? = null)
@@ -59,7 +63,8 @@ fun App() {
         val onList = destination?.hasRoute<ListRoute>() == true
         val onExplore = destination?.hasRoute<ExploreRoute>() == true
         val onAccount = destination?.hasRoute<AccountRoute>() == true
-        val onTab = onHome || onList || onExplore || onAccount
+        val onRanking = destination?.hasRoute<RankingRoute>() == true
+        val onTab = onHome || onList || onExplore || onAccount || onRanking
 
         fun navigateToTab(route: Any) {
             navController.navigate(route) {
@@ -109,6 +114,12 @@ fun App() {
                             onClick = { navigateToTab(AccountRoute) },
                             icon = { Text("👤") },
                             label = { Text("Profile") },
+                        )
+                        NavigationBarItem(
+                            selected = onRanking,
+                            onClick = { navigateToTab(RankingRoute) },
+                            icon = { Text("🏆") },
+                            label = { Text("Ranking") },
                         )
                     }
                 }
@@ -160,6 +171,9 @@ fun App() {
                         onRegister = { navController.navigate(RegisterRoute) },
                         onViewLog = { navigateToList() },
                     )
+                }
+                composable<RankingRoute> {
+                    RankingScreen(onSignIn = { navController.navigate(SignInRoute) })
                 }
                 composable<FormRoute> {
                     CheckInFormScreen(onDone = { navController.popBackStack() })

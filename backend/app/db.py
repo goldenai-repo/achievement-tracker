@@ -157,8 +157,12 @@ def upsert_user(
         )
         db.add(user)
     else:
-        user.email = email
-        user.display_name = display_name
+        # A Firebase token may not contain a display name, and it must not
+        # overwrite a username that the user explicitly saved in Profile.
+        if email is not None:
+            user.email = email
+        if not user.display_name and display_name:
+            user.display_name = display_name
         user.updated_at = now
     db.commit()
     db.refresh(user)

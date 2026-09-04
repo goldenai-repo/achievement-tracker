@@ -48,6 +48,20 @@ private class IosAchievementApi(
         serializer = MeResponse.serializer(),
     )
 
+    override suspend fun updateProfile(request: ProfileUpdateRequest): MeResponse = decode(
+        method = "PATCH",
+        path = "/v1/me",
+        body = json.encodeToString(ProfileUpdateRequest.serializer(), request),
+        serializer = MeResponse.serializer(),
+    )
+
+    override suspend fun deleteAccount() {
+        decodeNoContent(
+            method = "DELETE",
+            path = "/v1/me",
+        )
+    }
+
     override suspend fun searchCatalog(
         kind: String,
         query: String?,
@@ -102,6 +116,12 @@ private class IosAchievementApi(
         method = "GET",
         path = "/v1/summary",
         serializer = SummaryResponse.serializer(),
+    )
+
+    override suspend fun getGeographyRanking(limit: Int): GeographyRankingResponse = decode(
+        method = "GET",
+        path = "/v1/rankings/geography?limit=$limit",
+        serializer = GeographyRankingResponse.serializer(),
     )
 
     private suspend fun <T> decode(

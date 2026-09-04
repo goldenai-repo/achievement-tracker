@@ -74,6 +74,9 @@ UPDATE achievementEntity SET pendingSync = 0 WHERE id = :id;
 deleteSynced:
 DELETE FROM achievementEntity WHERE pendingSync = 0;
 
+deleteAll:
+DELETE FROM achievementEntity;
+
 deleteById:
 DELETE FROM achievementEntity WHERE id = :id;
 

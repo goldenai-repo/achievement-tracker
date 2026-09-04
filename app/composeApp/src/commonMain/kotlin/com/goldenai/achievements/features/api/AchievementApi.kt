@@ -78,6 +78,11 @@ data class MeResponse(
 )
 
 @Serializable
+data class ProfileUpdateRequest(
+    val username: String,
+)
+
+@Serializable
 data class AchievementGroupResponse(
     val entityId: String,
     val entity: CatalogPlace? = null,
@@ -87,8 +92,28 @@ data class AchievementGroupResponse(
     val checkins: List<CheckInResponse> = emptyList(),
 )
 
+@Serializable
+data class GeographyRankingEntry(
+    val rank: Int,
+    val displayName: String,
+    val countryCount: Int,
+    val admin1Count: Int,
+    val isCurrentUser: Boolean = false,
+)
+
+@Serializable
+data class GeographyRankingResponse(
+    val category: String = "geography",
+    val primaryMetric: String = "uniqueAdmin1",
+    val secondaryMetric: String = "uniqueCountries",
+    val entries: List<GeographyRankingEntry> = emptyList(),
+    val me: GeographyRankingEntry? = null,
+)
+
 interface AchievementApi {
     suspend fun getMe(): MeResponse
+    suspend fun updateProfile(request: ProfileUpdateRequest): MeResponse
+    suspend fun deleteAccount()
     suspend fun searchCatalog(kind: String, query: String?, parentId: String? = null, limit: Int = 25): List<CatalogPlace>
     suspend fun listCheckins(limit: Int = 50): List<CheckInResponse>
     suspend fun listAchievements(limit: Int = 50): List<AchievementGroupResponse>
@@ -96,6 +121,7 @@ interface AchievementApi {
     suspend fun updateCheckIn(checkinId: String, request: CheckInUpdateRequest): CheckInResponse
     suspend fun deleteCheckIn(checkinId: String)
     suspend fun summary(): SummaryResponse
+    suspend fun getGeographyRanking(limit: Int = 50): GeographyRankingResponse
 }
 
 expect fun createAchievementApi(auth: AuthRepository, baseUrl: String): AchievementApi

@@ -5,10 +5,11 @@ from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.auth import CurrentUser, get_current_user
+from app.auth import CurrentUser, delete_firebase_user, get_current_user
 from app.boundaries import geojson_bounds
 from app.checkins import (
     CheckInCreate,
@@ -22,10 +23,23 @@ from app.checkins import (
     update_checkin,
 )
 from app.config import get_settings
-from app.db import CatalogEntity, get_db, init_db, upsert_user
+from app.db import CatalogEntity, User, UserCheckin, UserUnlock, get_db, init_db, upsert_user
+from app.rankings import get_geography_ranking as build_geography_ranking
 
 settings = get_settings()
 app = FastAPI(title="Achievement Tracker API", version="0.1.0")
+
+
+class ProfileUpdate(BaseModel):
+    username: str = Field(min_length=3, max_length=30)
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        normalized = " ".join(value.strip().split())
+        if len(normalized) < 3:
+            raise ValueError("Username must contain at least 3 non-space characters")
+        return normalized
 
 app.add_middleware(
     CORSMiddleware,
@@ -86,6 +100,68 @@ def get_me(
         "createdAt": user.created_at.isoformat(),
         "updatedAt": user.updated_at.isoformat(),
     }
+
+
+@app.patch("/v1/me")
+def update_me(
+    payload: ProfileUpdate,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    existing = db.scalar(
+        select(User).where(
+            User.firebase_uid != current_user.uid,
+            func.lower(User.display_name) == payload.username.lower(),
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username is already taken",
+        )
+
+    user = upsert_user(
+        db,
+        firebase_uid=current_user.uid,
+        email=current_user.email,
+        display_name=current_user.display_name,
+    )
+    user.display_name = payload.username
+    db.commit()
+    db.refresh(user)
+    return {
+        "uid": user.firebase_uid,
+        "email": user.email,
+        "displayName": user.display_name,
+        "createdAt": user.created_at.isoformat(),
+        "updatedAt": user.updated_at.isoformat(),
+    }
+
+
+@app.delete("/v1/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_me(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Delete the authenticated user's Firebase account and application data."""
+    # The client re-authenticates immediately before calling this endpoint.
+    # Firebase deletion is first so a successful response represents removal
+    # of both the identity and the app-owned data.
+    delete_firebase_user(current_user.uid)
+    try:
+        db.query(UserCheckin).filter(UserCheckin.user_id == current_user.uid).delete(
+            synchronize_session=False,
+        )
+        db.query(UserUnlock).filter(UserUnlock.user_id == current_user.uid).delete(
+            synchronize_session=False,
+        )
+        user = db.get(User, current_user.uid)
+        if user is not None:
+            db.delete(user)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not delete application data") from exc
 
 
 @app.get("/v1/catalog")
@@ -246,3 +322,12 @@ def get_user_summary(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     return get_summary(db, current_user.uid)
+
+
+@app.get("/v1/rankings/geography")
+def get_geography_ranking_endpoint(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict:
+    return build_geography_ranking(db, current_user.uid, limit)

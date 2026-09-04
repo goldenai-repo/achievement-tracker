@@ -92,3 +92,20 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> Cur
         email=decoded.get("email"),
         display_name=decoded.get("name") or decoded.get("display_name"),
     )
+
+
+def delete_firebase_user(uid: str) -> None:
+    """Delete a Firebase Auth account after the caller has been authenticated."""
+    if firebase_auth is None:
+        raise HTTPException(status_code=503, detail="Firebase Admin SDK is not installed")
+
+    try:
+        firebase_auth.delete_user(uid)
+    except firebase_auth.UserNotFoundError:
+        # Keep DELETE /v1/me idempotent if the Auth account was already removed.
+        return
+    except Exception as exc:  # pragma: no cover - depends on Firebase Admin.
+        raise HTTPException(
+            status_code=502,
+            detail="Could not delete the Firebase account",
+        ) from exc
