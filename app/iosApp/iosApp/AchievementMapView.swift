@@ -80,7 +80,6 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
         let image = Self.makePinImage(color: color)
         // Match Android marker anchoring: pin tip sits on the coordinate.
         let annotationImage = MLNAnnotationImage(image: image, reuseIdentifier: reuseId)
-        annotationImage.centerOffset = CGVector(dx: 0, dy: -image.size.height / 2)
         return annotationImage
     }
 
@@ -120,7 +119,7 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
         guard !boundaryLayerIds.isEmpty else { return }
         let features = mapView.visibleFeatures(
             at: point,
-            inStyleLayersWithIdentifiers: boundaryLayerIds
+            styleLayerIdentifiers: boundaryLayerIds
         )
         for feature in features {
             if let catalogId = feature.attribute(forKey: "catalog_id") as? String, !catalogId.isEmpty {
@@ -286,7 +285,7 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
                     ne: CLLocationCoordinate2D(latitude: north, longitude: east)
                 )
                 let padding = UIEdgeInsets(top: 48, left: 48, bottom: 48, right: 48)
-                let camera = self.mapView.camera(thatFits: bounds, edgePadding: padding)
+                let camera = self.mapView.cameraThatFitsCoordinateBounds(bounds, edgePadding: padding)
                 self.mapView.setCamera(
                     camera,
                     withDuration: duration,
