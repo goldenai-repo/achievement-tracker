@@ -1,5 +1,6 @@
 package com.goldenai.achievements
 
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeUIViewController
 import com.goldenai.achievements.core.apiBaseUrl
 import com.goldenai.achievements.core.db.DriverFactory
@@ -14,7 +15,15 @@ import platform.UIKit.UIViewController
  * API base URL comes from [apiBaseUrl] (Info.plist `API_BASE_URL`), matching
  * Android's `BuildConfig.API_BASE_URL` role.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 fun MainViewController(cloudAvailable: Boolean): UIViewController {
     AppGraph.init(DriverFactory(), cloudAvailable, apiBaseUrl)
-    return ComposeUIViewController { App() }
+    return ComposeUIViewController(
+        configure = {
+            // Avoid opaque full-screen chrome fighting SwiftUI safe-area ignores.
+            opaque = false
+        },
+    ) {
+        App()
+    }
 }
