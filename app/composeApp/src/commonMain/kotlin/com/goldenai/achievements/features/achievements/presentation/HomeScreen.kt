@@ -26,6 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goldenai.achievements.core.model.Achievement
 import com.goldenai.achievements.core.model.AchievementType
 import com.goldenai.achievements.di.AppGraph
+import com.goldenai.achievements.ui.EmojiText
 
 @Composable
 fun HomeScreen(
@@ -129,7 +130,7 @@ private fun CategoryCard(
 ) {
     Card(onClick = onClick, modifier = modifier) {
         Column(Modifier.padding(14.dp)) {
-            Text(type.emoji, style = MaterialTheme.typography.headlineSmall)
+            EmojiText(type.emoji, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(6.dp))
             Text("$count", style = MaterialTheme.typography.titleLarge)
             Text(
@@ -146,7 +147,7 @@ private fun CategoryCard(
 fun AchievementRow(achievement: Achievement, onClick: (() -> Unit)? = null) {
     val content: @Composable () -> Unit = {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(achievement.typeInfo?.emoji ?: "🏆", style = MaterialTheme.typography.titleLarge)
+            EmojiText(achievement.typeInfo?.emoji ?: "🏆", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(achievement.content, style = MaterialTheme.typography.titleSmall, maxLines = 1)

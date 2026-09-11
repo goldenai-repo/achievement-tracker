@@ -25,6 +25,7 @@ import com.goldenai.achievements.features.auth.presentation.SignInScreen
 import com.goldenai.achievements.features.map.ExploreScreen
 import com.goldenai.achievements.features.profile.presentation.ProfileScreen
 import com.goldenai.achievements.features.ranking.presentation.RankingScreen
+import com.goldenai.achievements.ui.EmojiText
 import com.goldenai.achievements.ui.theme.AppTheme
 import kotlinx.serialization.Serializable
 
@@ -94,31 +95,31 @@ fun App() {
                         NavigationBarItem(
                             selected = onHome,
                             onClick = { navigateToTab(HomeRoute) },
-                            icon = { Text("🏠") },
+                            icon = { EmojiText("🏠") },
                             label = { Text("Home") },
                         )
                         NavigationBarItem(
                             selected = onList,
                             onClick = { navigateToTab(ListRoute()) },
-                            icon = { Text("📜") },
+                            icon = { EmojiText("📜") },
                             label = { Text("Log") },
                         )
                         NavigationBarItem(
                             selected = onExplore,
                             onClick = { navigateToTab(ExploreRoute) },
-                            icon = { Text("🗺️") },
+                            icon = { EmojiText("🗺️") },
                             label = { Text("Explore") },
                         )
                         NavigationBarItem(
                             selected = onAccount,
                             onClick = { navigateToTab(AccountRoute) },
-                            icon = { Text("👤") },
+                            icon = { EmojiText("👤") },
                             label = { Text("Profile") },
                         )
                         NavigationBarItem(
                             selected = onRanking,
                             onClick = { navigateToTab(RankingRoute) },
-                            icon = { Text("🏆") },
+                            icon = { EmojiText("🏆") },
                             label = { Text("Ranking") },
                         )
                     }

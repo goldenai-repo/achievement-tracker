@@ -44,6 +44,7 @@ import com.goldenai.achievements.core.country.countryFlagEmoji
 import com.goldenai.achievements.core.formatDate
 import com.goldenai.achievements.core.model.Achievement
 import com.goldenai.achievements.di.AppGraph
+import com.goldenai.achievements.ui.EmojiText
 import androidx.compose.material3.rememberDatePickerState
 
 private val logFilters = listOf(
@@ -261,7 +262,7 @@ private fun GeographyCountryRow(
     ) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(countryFlagEmoji(country.countryCode), style = MaterialTheme.typography.titleLarge)
+                EmojiText(countryFlagEmoji(country.countryCode), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(country.countryName, style = MaterialTheme.typography.titleMedium)
@@ -307,7 +308,7 @@ private fun RegionRow(
 
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("🗺️", style = MaterialTheme.typography.titleMedium)
+            EmojiText("🗺️", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(place.content, style = MaterialTheme.typography.titleSmall)
@@ -384,7 +385,7 @@ private fun GroupedAchievementRow(
     ) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(place.typeInfo?.emoji ?: "🏆", style = MaterialTheme.typography.titleLarge)
+                EmojiText(place.typeInfo?.emoji ?: "🏆", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(place.content, style = MaterialTheme.typography.titleMedium)
