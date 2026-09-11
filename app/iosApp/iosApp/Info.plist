@@ -29,6 +29,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- Mirrors Android BuildConfig.API_BASE_URL / MAP_STYLE_URL.
+	     Override for a physical device (LAN IP) or a production API. -->
+	<key>API_BASE_URL</key>
+	<string>http://127.0.0.1:8000</string>
+	<key>MAP_STYLE_URL</key>
+	<string>https://tiles.openfreemap.org/styles/bright</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

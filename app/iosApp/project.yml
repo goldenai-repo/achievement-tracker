@@ -38,6 +38,9 @@ targets:
         # Allow http://127.0.0.1 during local FastAPI development (matches Info.plist).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Mirrors Android BuildConfig debug defaults (simulator loopback).
+        API_BASE_URL: "http://127.0.0.1:8000"
+        MAP_STYLE_URL: "https://tiles.openfreemap.org/styles/bright"
 
     settings:
       base:

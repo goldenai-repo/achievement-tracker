@@ -33,3 +33,5 @@ actual fun parseIsoUtc(value: String): Long = runCatching {
 }
 
 actual val mapStyleUrl: String = BuildConfig.MAP_STYLE_URL
+
+actual val apiBaseUrl: String = BuildConfig.API_BASE_URL
