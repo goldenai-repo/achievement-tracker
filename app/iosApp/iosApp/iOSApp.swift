@@ -21,6 +21,12 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Let Compose own safe areas (parity with Android edge-to-edge +
+                // Material3 Scaffold insets). Without this, iOS double-pads or
+                // clips under the notch / home indicator.
+                .ignoresSafeArea(edges: .all)
+                // Compose handles IME via imePadding(); SwiftUI must not also
+                // shrink the hosting controller when the keyboard opens.
                 .ignoresSafeArea(.keyboard)
         }
     }

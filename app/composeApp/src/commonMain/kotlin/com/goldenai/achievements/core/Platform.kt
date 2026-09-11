@@ -18,3 +18,11 @@ expect fun parseIsoUtc(value: String): Long
 
 /** Configured MapLibre style URL for the current platform/build. */
 expect val mapStyleUrl: String
+
+/**
+ * FastAPI base URL for the current platform/build.
+ *
+ * Android: `BuildConfig.API_BASE_URL` / `-PAPI_BASE_URL`.
+ * iOS: Info.plist `API_BASE_URL` (simulator default: loopback).
+ */
+expect val apiBaseUrl: String

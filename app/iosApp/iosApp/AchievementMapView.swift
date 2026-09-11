@@ -26,6 +26,13 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
         mapView.addGestureRecognizer(tap)
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // UIKitView often mounts with a zero frame first. Without this, MLNMapView
+        // stays blank/uninteractive on iOS until a rotation or unrelated layout pass.
+        mapView.frame = bounds
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
@@ -70,16 +77,19 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
 
     func mapView(_ mapView: MLNMapView, imageFor annotation: MLNAnnotation) -> MLNAnnotationImage? {
         guard let point = annotation as? AchievementPointAnnotation else { return nil }
-        let reuseId = point.isSearchSelection ? "search-selection-pin" : "checked-in-pin"
+        let reuseId = point.isSearchSelection ? "search-selection-pin-v2" : "checked-in-pin-v2"
         if let existing = mapView.dequeueReusableAnnotationImage(withIdentifier: reuseId) {
             return existing
         }
         let color: UIColor = point.isSearchSelection
             ? UIColor(red: 234 / 255, green: 88 / 255, blue: 12 / 255, alpha: 1)
             : UIColor(red: 37 / 255, green: 99 / 255, blue: 235 / 255, alpha: 1)
-        let image = Self.makePinImage(color: color)
+        // alwaysOriginal: MapLibre/UIKit may otherwise treat the pin as a template
+        // image and tint it (washed-out / “missing” marker colors on iOS).
+        let image = Self.makePinImage(color: color).withRenderingMode(.alwaysOriginal)
         // Match Android marker anchoring: pin tip sits on the coordinate.
         let annotationImage = MLNAnnotationImage(image: image, reuseIdentifier: reuseId)
+        annotationImage.centerOffset = CGVector(dx: 0, dy: -image.size.height / 2)
         return annotationImage
     }
 
@@ -343,8 +353,13 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
     }
 
     private static func makePinImage(color: UIColor) -> UIImage {
+        // Draw in points; UIGraphicsImageRenderer uses the screen scale so Retina
+        // gets crisp pins without looking 1× blurry (a common “bad image” report).
         let size = CGSize(width: 34, height: 42)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = UIScreen.main.scale
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { _ in
             let centerX = size.width / 2
             let path = UIBezierPath()

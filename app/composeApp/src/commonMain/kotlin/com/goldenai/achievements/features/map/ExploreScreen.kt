@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -127,93 +128,105 @@ fun ExploreScreen(onCheckIn: (CheckInSelection) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        // Keep pickers/help in a bounded scroll region so the MapLibre/UIKit
+        // map is never a child of verticalScroll. Nested scroll on iOS steals
+        // pan/zoom even when UIKitView is NonCooperative.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .heightIn(max = 260.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Explore", style = MaterialTheme.typography.headlineMedium)
-            TextButton(onClick = viewModel::clearCountry) {
-                Text("Reset")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Explore", style = MaterialTheme.typography.headlineMedium)
+                TextButton(onClick = viewModel::clearCountry) {
+                    Text("Reset")
+                }
             }
-        }
 
-        if (viewModel.step == ExploreStep.COUNTRY_PICKER) {
-            Text(
-                "Choose a country",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            CatalogPickerField(
-                value = viewModel.countryQuery,
-                label = "Search country",
-                open = viewModel.countryDropdownOpen,
-                loading = viewModel.countryLoading,
-                places = viewModel.countries,
-                onValueChange = viewModel::updateCountryQuery,
-                onFocus = viewModel::onCountryFocused,
-                onClear = viewModel::clearCountry,
-                onDismiss = viewModel::dismissDropdowns,
-                onSelect = viewModel::chooseCountry,
-            )
-        } else {
-            TextButton(onClick = viewModel::backToCountryPicker) {
-                Text("‹ Change country")
-            }
-            Text(
-                "Selected country: ${viewModel.selectedCountry?.name ?: "Unknown"}",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                "Choose a province or state",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            CatalogPickerField(
-                value = viewModel.regionQuery,
-                label = "Search province or state",
-                open = viewModel.regionDropdownOpen,
-                loading = viewModel.regionLoading,
-                places = viewModel.regions,
-                onValueChange = viewModel::updateRegionQuery,
-                onFocus = viewModel::onRegionFocused,
-                onClear = viewModel::clearRegion,
-                onDismiss = viewModel::dismissDropdowns,
-                onSelect = viewModel::chooseRegion,
-            )
-            if (!viewModel.regionLoading && viewModel.regions.isEmpty()) {
+            if (viewModel.step == ExploreStep.COUNTRY_PICKER) {
                 Text(
-                    "No first-level administrative regions found. Country-only fallback is available.",
+                    "Choose a country",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                CatalogPickerField(
+                    value = viewModel.countryQuery,
+                    label = "Search country",
+                    open = viewModel.countryDropdownOpen,
+                    loading = viewModel.countryLoading,
+                    places = viewModel.countries,
+                    onValueChange = viewModel::updateCountryQuery,
+                    onFocus = viewModel::onCountryFocused,
+                    onClear = viewModel::clearCountry,
+                    onDismiss = viewModel::dismissDropdowns,
+                    onSelect = viewModel::chooseCountry,
+                )
+            } else {
+                TextButton(onClick = viewModel::backToCountryPicker) {
+                    Text("‹ Change country")
+                }
+                Text(
+                    "Selected country: ${viewModel.selectedCountry?.name ?: "Unknown"}",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    "Choose a province or state",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                CatalogPickerField(
+                    value = viewModel.regionQuery,
+                    label = "Search province or state",
+                    open = viewModel.regionDropdownOpen,
+                    loading = viewModel.regionLoading,
+                    places = viewModel.regions,
+                    onValueChange = viewModel::updateRegionQuery,
+                    onFocus = viewModel::onRegionFocused,
+                    onClear = viewModel::clearRegion,
+                    onDismiss = viewModel::dismissDropdowns,
+                    onSelect = viewModel::chooseRegion,
+                )
+                if (!viewModel.regionLoading && viewModel.regions.isEmpty()) {
+                    Text(
+                        "No first-level administrative regions found. Country-only fallback is available.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            viewModel.error?.let { message ->
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
 
-        viewModel.error?.let { message ->
             Text(
-                message,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+                when {
+                    viewModel.selectedRegion != null -> "Showing ${viewModel.selectedRegion?.name}"
+                    viewModel.selectedCountry != null -> "Showing ${viewModel.selectedCountry?.name}"
+                    else -> "Showing the world"
+                },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                if (points.isEmpty()) "No checked-in places in this area yet."
+                else "${points.size} checked-in place${if (points.size == 1) "" else "s"} on the map",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        Text(
-            when {
-                viewModel.selectedRegion != null -> "Showing ${viewModel.selectedRegion?.name}"
-                viewModel.selectedCountry != null -> "Showing ${viewModel.selectedCountry?.name}"
-                else -> "Showing the world"
-            },
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Text(
-            if (points.isEmpty()) "No checked-in places in this area yet."
-            else "${points.size} checked-in place${if (points.size == 1) "" else "s"} on the map",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         VectorMap(
             points = mapPoints,
             boundaries = boundaries,
@@ -245,7 +258,10 @@ fun ExploreScreen(onCheckIn: (CheckInSelection) -> Unit) {
                     selectedMapSelection = CheckInSelection(country, region)
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(480.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .heightIn(min = 280.dp),
         )
         Text(
             "Tap a marker or an administrative boundary to review the place and add a check-in. The selected country or region is shown even before you check in there.",

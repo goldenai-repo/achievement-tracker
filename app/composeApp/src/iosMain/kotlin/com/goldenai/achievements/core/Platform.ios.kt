@@ -1,5 +1,6 @@
 package com.goldenai.achievements.core
 
+import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSDateFormatterMediumStyle
@@ -31,7 +32,19 @@ actual fun formatIsoUtc(epochMillis: Long): String = formatUtcIso(epochMillis)
 
 actual fun parseIsoUtc(value: String): Long = parseUtcIso(value)
 
-actual val mapStyleUrl: String = "https://tiles.openfreemap.org/styles/bright"
+actual val mapStyleUrl: String =
+    infoString("MAP_STYLE_URL")
+        ?: "https://tiles.openfreemap.org/styles/bright"
+
+actual val apiBaseUrl: String =
+    infoString("API_BASE_URL")
+        ?: "http://127.0.0.1:8000"
+
+/** Reads an optional string from the host app's Info.plist. */
+private fun infoString(key: String): String? =
+    (NSBundle.mainBundle.objectForInfoDictionaryKey(key) as? String)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
 
 /**
  * Pure-Kotlin UTC helpers avoid brittle NSTimeZone interop on Kotlin/Native.
