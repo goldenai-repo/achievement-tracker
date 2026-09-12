@@ -43,4 +43,22 @@ class AuthViewModel(val register: Boolean) : ViewModel() {
             }
         }
     }
+
+    fun signInWithGoogleIdToken(idToken: String, onSuccess: () -> Unit) {
+        if (loading) return
+        loading = true
+        error = null
+        viewModelScope.launch {
+            val result = AppGraph.auth.signInWithGoogleIdToken(idToken)
+            loading = false
+            when (result) {
+                is AppResult.Ok -> onSuccess()
+                is AppResult.Err -> error = result.message
+            }
+        }
+    }
+
+    fun setExternalError(message: String) {
+        if (!loading) error = message
+    }
 }

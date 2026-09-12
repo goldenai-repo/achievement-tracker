@@ -59,6 +59,7 @@ private class IosAchievementApi(
         decodeNoContent(
             method = "DELETE",
             path = "/v1/me",
+            forceRefreshToken = true,
         )
     }
 
@@ -138,8 +139,9 @@ private class IosAchievementApi(
     private suspend fun decodeNoContent(
         method: String,
         path: String,
+        forceRefreshToken: Boolean = false,
     ) {
-        val (code, response) = execute(method, path, body = null)
+        val (code, response) = execute(method, path, body = null, forceRefreshToken = forceRefreshToken)
         if (code !in 200..299) throw ApiException(code, response)
     }
 
@@ -147,8 +149,9 @@ private class IosAchievementApi(
         method: String,
         path: String,
         body: String?,
+        forceRefreshToken: Boolean = false,
     ): Pair<Int, String> {
-        val token = auth.idToken()
+        val token = auth.idToken(forceRefresh = forceRefreshToken)
             ?: throw IllegalStateException("Sign in to use the Achievement Tracker API.")
         val url = root + path
         val response = when (method) {

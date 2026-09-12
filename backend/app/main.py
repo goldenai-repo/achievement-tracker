@@ -9,7 +9,12 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.auth import CurrentUser, delete_firebase_user, get_current_user
+from app.auth import (
+    CurrentUser,
+    delete_firebase_user,
+    get_current_user,
+    require_recent_authentication,
+)
 from app.boundaries import geojson_bounds
 from app.checkins import (
     CheckInCreate,
@@ -144,7 +149,10 @@ def delete_me(
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     """Delete the authenticated user's Firebase account and application data."""
-    # The client re-authenticates immediately before calling this endpoint.
+    # The Android/iOS client re-authenticates and refreshes its ID token
+    # immediately before calling this endpoint. Enforce that server-side too:
+    # a stolen but still-valid ID token must not be enough to delete an account.
+    require_recent_authentication(current_user)
     # Firebase deletion is first so a successful response represents removal
     # of both the identity and the app-owned data.
     delete_firebase_user(current_user.uid)

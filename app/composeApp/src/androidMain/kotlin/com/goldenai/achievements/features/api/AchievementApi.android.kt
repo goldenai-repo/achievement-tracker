@@ -41,6 +41,7 @@ private class AndroidAchievementApi(
         requestNoContent(
             method = "DELETE",
             path = "/v1/me",
+            forceRefreshToken = true,
         )
     }
 
@@ -139,8 +140,10 @@ private class AndroidAchievementApi(
     private suspend fun requestNoContent(
         method: String,
         path: String,
+        forceRefreshToken: Boolean = false,
     ): Unit = withContext(Dispatchers.IO) {
-        val token = auth.idToken() ?: throw IllegalStateException("Sign in to use the Achievement Tracker API.")
+        val token = auth.idToken(forceRefresh = forceRefreshToken)
+            ?: throw IllegalStateException("Sign in to use the Achievement Tracker API.")
         val connection = (URL(root + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000

@@ -41,6 +41,8 @@ import com.goldenai.achievements.di.AppGraph
 import com.goldenai.achievements.features.achievements.data.AchievementRepository
 import com.goldenai.achievements.features.api.MeResponse
 import com.goldenai.achievements.features.auth.data.AppUser
+import com.goldenai.achievements.features.auth.data.AuthRepository
+import com.goldenai.achievements.features.auth.presentation.GoogleSignInButton
 import com.goldenai.achievements.core.AppResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -104,6 +106,33 @@ class ProfileViewModel(
 
     fun syncNow() = AppGraph.sync.requestSync()
 
+    fun linkGoogleIdToken(idToken: String) {
+        if (_refreshing.value) return
+        viewModelScope.launch {
+            _refreshing.value = true
+            _error.value = null
+            try {
+                when (val result = AppGraph.auth.linkGoogleIdToken(idToken)) {
+                    is AppResult.Ok -> {
+                        if (AppGraph.auth.currentUser != null) {
+                            _profile.value = AppGraph.api.getMe()
+                        }
+                        repo.refresh()
+                    }
+                    is AppResult.Err -> _error.value = result.message
+                }
+            } catch (t: Throwable) {
+                _error.value = t.message ?: "Could not link Google account."
+            } finally {
+                _refreshing.value = false
+            }
+        }
+    }
+
+    fun setExternalError(message: String) {
+        if (!_refreshing.value) _error.value = message
+    }
+
     fun saveUsername(username: String, onSuccess: () -> Unit = {}) {
         val normalized = username.trim().replace(Regex("\\s+"), " ")
         if (normalized.length !in 3..30) {
@@ -140,11 +169,7 @@ class ProfileViewModel(
                 when (val authResult = AppGraph.auth.reauthenticate(password)) {
                     is AppResult.Err -> _error.value = authResult.message
                     is AppResult.Ok -> {
-                        AppGraph.api.deleteAccount()
-                        repo.clearAllLocalData()
-                        AppGraph.auth.signOut()
-                        _profile.value = null
-                        onSuccess()
+                        completeAccountDeletion(onSuccess)
                     }
                 }
             } catch (t: Throwable) {
@@ -153,6 +178,32 @@ class ProfileViewModel(
                 _deletingAccount.value = false
             }
         }
+    }
+
+    fun deleteAccountWithGoogle(idToken: String, onSuccess: () -> Unit = {}) {
+        if (_deletingAccount.value) return
+        viewModelScope.launch {
+            _deletingAccount.value = true
+            _error.value = null
+            try {
+                when (val authResult = AppGraph.auth.reauthenticateWithGoogleIdToken(idToken)) {
+                    is AppResult.Err -> _error.value = authResult.message
+                    is AppResult.Ok -> completeAccountDeletion(onSuccess)
+                }
+            } catch (t: Throwable) {
+                _error.value = t.message ?: "Could not delete account."
+            } finally {
+                _deletingAccount.value = false
+            }
+        }
+    }
+
+    private suspend fun completeAccountDeletion(onSuccess: () -> Unit) {
+        AppGraph.api.deleteAccount()
+        repo.clearAllLocalData()
+        AppGraph.auth.signOut()
+        _profile.value = null
+        onSuccess()
     }
 }
 
@@ -179,6 +230,7 @@ fun ProfileScreen(
     var usernameDraft by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
+    var deleteWithPassword by remember { mutableStateOf(false) }
 
     LaunchedEffect(user?.uid) {
         vm.refresh()
@@ -294,8 +346,14 @@ fun ProfileScreen(
                 onSignIn = onSignIn,
                 onRegister = onRegister,
                 onSignOut = vm::signOut,
+                googleLinked = AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER),
+                onLinkGoogle = vm::linkGoogleIdToken,
+                onLinkGoogleError = vm::setExternalError,
                 deletingAccount = deletingAccount,
-                onDeleteAccount = { showDeleteDialog = true },
+                onDeleteAccount = {
+                    showDeleteDialog = true
+                    deleteWithPassword = !AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER)
+                },
             )
         }
 
@@ -310,38 +368,88 @@ fun ProfileScreen(
                 if (!deletingAccount) {
                     showDeleteDialog = false
                     deletePassword = ""
+                    deleteWithPassword = false
                 }
             },
             title = { Text("Delete account?") },
             text = {
+                val hasGoogleProvider = AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER)
+                val hasPasswordProvider = AppGraph.auth.hasProvider(AuthRepository.PASSWORD_PROVIDER)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("This permanently deletes your account, cloud check-ins, and this device's cached data.")
-                    OutlinedTextField(
-                        value = deletePassword,
-                        onValueChange = { deletePassword = it },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        enabled = !deletingAccount,
-                        visualTransformation = PasswordVisualTransformation(),
-                    )
+                    when {
+                        hasGoogleProvider && !deleteWithPassword -> {
+                            Text("Verify with Google to continue.", style = MaterialTheme.typography.bodySmall)
+                            GoogleSignInButton(
+                                enabled = !deletingAccount,
+                                label = "Verify with Google and delete",
+                                onIdToken = { idToken ->
+                                    vm.deleteAccountWithGoogle(idToken) {
+                                        showDeleteDialog = false
+                                        deletePassword = ""
+                                        deleteWithPassword = false
+                                    }
+                                },
+                                onError = vm::setExternalError,
+                            )
+                            if (hasPasswordProvider) {
+                                TextButton(
+                                    onClick = {
+                                        deleteWithPassword = true
+                                        deletePassword = ""
+                                    },
+                                    enabled = !deletingAccount,
+                                ) { Text("Use password instead") }
+                            }
+                        }
+                        hasPasswordProvider -> {
+                            OutlinedTextField(
+                                value = deletePassword,
+                                onValueChange = { deletePassword = it },
+                                label = { Text("Password") },
+                                singleLine = true,
+                                enabled = !deletingAccount,
+                                visualTransformation = PasswordVisualTransformation(),
+                            )
+                            if (hasGoogleProvider) {
+                                TextButton(
+                                    onClick = {
+                                        deleteWithPassword = false
+                                        deletePassword = ""
+                                    },
+                                    enabled = !deletingAccount,
+                                ) { Text("Use Google instead") }
+                            }
+                        }
+                        else -> {
+                            Text(
+                                "No supported sign-in method is available for account verification.",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        vm.deleteAccount(deletePassword) {
-                            showDeleteDialog = false
-                            deletePassword = ""
-                        }
-                    },
-                    enabled = deletePassword.isNotEmpty() && !deletingAccount,
-                ) { Text(if (deletingAccount) "Deleting…" else "Delete permanently") }
+                if (deleteWithPassword && AppGraph.auth.hasProvider(AuthRepository.PASSWORD_PROVIDER)) {
+                    Button(
+                        onClick = {
+                            vm.deleteAccount(deletePassword) {
+                                showDeleteDialog = false
+                                deletePassword = ""
+                                deleteWithPassword = false
+                            }
+                        },
+                        enabled = deletePassword.isNotEmpty() && !deletingAccount,
+                    ) { Text(if (deletingAccount) "Deleting…" else "Delete permanently") }
+                }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
                         showDeleteDialog = false
                         deletePassword = ""
+                        deleteWithPassword = false
                     },
                     enabled = !deletingAccount,
                 ) { Text("Cancel") }
@@ -398,6 +506,9 @@ private fun SyncCard(
     onSignIn: () -> Unit,
     onRegister: () -> Unit,
     onSignOut: () -> Unit,
+    googleLinked: Boolean,
+    onLinkGoogle: (String) -> Unit,
+    onLinkGoogleError: (String) -> Unit,
     deletingAccount: Boolean,
     onDeleteAccount: () -> Unit,
 ) {
@@ -461,6 +572,20 @@ private fun SyncCard(
                         OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
                             Text("Sign out")
                         }
+                    }
+                    if (googleLinked) {
+                        Text(
+                            "Google account linked",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        GoogleSignInButton(
+                            enabled = !syncing && !deletingAccount,
+                            label = "Link Google account",
+                            onIdToken = onLinkGoogle,
+                            onError = onLinkGoogleError,
+                        )
                     }
                     TextButton(
                         onClick = onDeleteAccount,

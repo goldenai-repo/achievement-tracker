@@ -44,6 +44,13 @@ It needs:
 - `roles/secretmanager.secretAccessor` on `cloud-sql-db-password`;
 - `roles/storage.objectViewer` on the boundaries bucket.
 
+The Firebase project is separate from the Cloud Run project in this deployment.
+Grant the Cloud Run service account both of the following roles on the Firebase
+project so Firebase Admin can delete authenticated users:
+
+- `roles/firebaseauth.admin`;
+- `roles/serviceusage.serviceUsageConsumer`.
+
 ## Deploy a staging revision
 
 Run from the repository root after replacing `<firebase-project-id>` and the
