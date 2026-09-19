@@ -34,6 +34,7 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.sources.GeoJsonSource
+import android.view.MotionEvent
 
 @Composable
 actual fun VectorMap(
@@ -117,7 +118,23 @@ actual fun VectorMap(
     }
     val mapView = remember {
         MapLibre.getInstance(context)
-        MapView(context).also { it.onCreate(null) }
+        MapView(context).also {
+            // Keep a drag that starts on the map inside MapLibre. Without
+            // disallowing interception, an ancestor scroll container can
+            // consume the gesture and move the whole Explore/Search page.
+            it.setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN,
+                    MotionEvent.ACTION_MOVE,
+                    -> view.parent?.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL,
+                    -> view.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
+            it.onCreate(null)
+        }
     }
 
     DisposableEffect(mapView) {
