@@ -9,6 +9,7 @@ actual fun GoogleSignInButton(
     onIdToken: (String) -> Unit,
     onError: (String) -> Unit,
     label: String,
+    preferExistingAccount: Boolean,
 ) {
     Text("$label is available on Android")
 }
