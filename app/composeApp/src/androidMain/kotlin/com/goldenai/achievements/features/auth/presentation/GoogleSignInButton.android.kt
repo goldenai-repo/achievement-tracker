@@ -11,7 +11,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.NoCredentialException
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.CancellationException
@@ -23,7 +22,6 @@ actual fun GoogleSignInButton(
     onIdToken: (String) -> Unit,
     onError: (String) -> Unit,
     label: String,
-    preferExistingAccount: Boolean,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -37,18 +35,15 @@ actual fun GoogleSignInButton(
                         context = context,
                         request = GetCredentialRequest.Builder()
                             .addCredentialOption(
-                                if (preferExistingAccount) {
-                                    // Account linking should query existing
-                                    // Google accounts instead of starting a
-                                    // new sign-in flow that may be cancelled.
-                                    GetGoogleIdOption.Builder()
-                                        .setFilterByAuthorizedAccounts(false)
-                                        .setServerClientId(context.googleWebClientId())
-                                        .build()
-                                } else {
-                                    GetSignInWithGoogleOption.Builder(context.googleWebClientId())
-                                        .build()
-                                },
+                                // Use the Web OAuth client ID from
+                                // google-services.json for every Google flow.
+                                // Query all available accounts so sign-in,
+                                // registration, and account linking share the
+                                // same reliable Credential Manager path.
+                                GetGoogleIdOption.Builder()
+                                    .setFilterByAuthorizedAccounts(false)
+                                    .setServerClientId(context.googleWebClientId())
+                                    .build(),
                             )
                             .build(),
                     )

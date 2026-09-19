@@ -8,5 +8,4 @@ expect fun GoogleSignInButton(
     onIdToken: (String) -> Unit,
     onError: (String) -> Unit,
     label: String = "Continue with Google",
-    preferExistingAccount: Boolean = false,
 )

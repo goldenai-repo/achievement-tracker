@@ -639,7 +639,6 @@ private fun AccountSyncSection(
                             label = "Link Google account",
                             onIdToken = onLinkGoogle,
                             onError = onLinkGoogleError,
-                            preferExistingAccount = true,
                         )
                     }
                 }
