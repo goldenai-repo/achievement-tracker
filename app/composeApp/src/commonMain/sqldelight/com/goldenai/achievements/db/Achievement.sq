@@ -50,6 +50,20 @@ SELECT COUNT(*) FROM achievementEntity WHERE deleted = 0;
 countUniqueEntities:
 SELECT COUNT(DISTINCT entityId) FROM achievementEntity WHERE deleted = 0;
 
+countUniqueCountries:
+SELECT COUNT(DISTINCT CASE
+  WHEN entityKind = 'country' THEN entityId
+  WHEN entityKind = 'admin1' THEN parentId
+END)
+FROM achievementEntity
+WHERE deleted = 0
+  AND entityKind IN ('country', 'admin1');
+
+countUniqueAdmin1:
+SELECT COUNT(DISTINCT entityId)
+FROM achievementEntity
+WHERE deleted = 0 AND entityKind = 'admin1';
+
 countPending:
 SELECT COUNT(*) FROM achievementEntity WHERE pendingSync = 1;
 

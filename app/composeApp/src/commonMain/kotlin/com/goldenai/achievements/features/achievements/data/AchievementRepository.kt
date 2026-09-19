@@ -62,6 +62,12 @@ class AchievementRepository(
     fun watchUniqueEntityCount(): Flow<Long> =
         q.countUniqueEntities().asFlow().mapToOne(Dispatchers.Default)
 
+    fun watchUniqueCountryCount(): Flow<Long> =
+        q.countUniqueCountries().asFlow().mapToOne(Dispatchers.Default)
+
+    fun watchUniqueAdmin1Count(): Flow<Long> =
+        q.countUniqueAdmin1().asFlow().mapToOne(Dispatchers.Default)
+
     /** Clears the single-device cache after a user permanently deletes their account. */
     suspend fun clearAllLocalData() = withContext(Dispatchers.Default) {
         db.transaction {

@@ -122,7 +122,7 @@ android {
             buildConfigField(
                 "String",
                 "API_BASE_URL",
-                "\"${project.findProperty("RELEASE_API_BASE_URL") ?: "https://achievement-tracker-api-328158154177.us-east1.run.app"}\"",
+                "\"${project.findProperty("RELEASE_API_BASE_URL") ?: "https://achievement-tracker-api-mbqpgsmxla-ue.a.run.app"}\"",
             )
             buildConfigField(
                 "String",

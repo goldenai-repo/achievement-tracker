@@ -1,21 +1,24 @@
 package com.goldenai.achievements.features.ranking.presentation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -23,8 +26,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -77,6 +84,13 @@ class RankingViewModel(
     }
 }
 
+private val rankingCategories = listOf(
+    "geography" to "🌍 Geography",
+    "wildlife" to "🦁 Wildlife",
+    "culture" to "🏛️ Culture",
+    "heritage" to "🏯 Heritage",
+)
+
 @Composable
 fun RankingScreen(
     onSignIn: () -> Unit,
@@ -85,6 +99,7 @@ fun RankingScreen(
     val ranking by vm.ranking.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
+    var selectedCategory by remember { mutableStateOf("geography") }
 
     LaunchedEffect(AppGraph.auth.currentUser?.uid) {
         vm.refresh()
@@ -96,17 +111,52 @@ fun RankingScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Column {
-                Text("Ranking", style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Geo ranking is based on unique first-level regions, then countries.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Ranking", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "Compare your geographic footprint with other explorers.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = vm::refresh, enabled = !loading) {
+                    Text(
+                        text = if (loading) "…" else "↻",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                }
             }
         }
 
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(rankingCategories.size) { index ->
+                    val (key, label) = rankingCategories[index]
+                    FilterChip(
+                        selected = selectedCategory == key,
+                        onClick = { selectedCategory = key },
+                        label = { Text(label) },
+                    )
+                }
+            }
+        }
+
+        if (selectedCategory != "geography") {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Text(
+                        "${rankingCategories.first { it.first == selectedCategory }.second} rankings are coming soon.",
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
         if (!vm.signedIn) {
             item {
                 Card(
@@ -134,30 +184,52 @@ fun RankingScreen(
                 }
             }
         } else {
-            ranking?.me?.let { me ->
-                item { MyRankingCard(me) }
-            } ?: item {
-                Card {
-                    Text(
-                        "No ranked check-ins yet. Record a region to join the leaderboard.",
-                        modifier = Modifier.padding(16.dp),
-                    )
+            if (ranking?.me == null && ranking?.entries.isNullOrEmpty()) {
+                item {
+                    Card {
+                        Text(
+                            "No ranked check-ins yet. Record a region to join the leaderboard.",
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
                 }
             }
 
-            item { Text("Top explorers", style = MaterialTheme.typography.titleLarge) }
-            if (ranking?.entries.isNullOrEmpty()) {
+            val entries = ranking?.entries.orEmpty()
+            val currentUser = ranking?.me
+            val topEntries = entries.take(10).map { entry ->
+                if (currentUser != null && entry.rank == currentUser.rank) {
+                    entry.copy(isCurrentUser = true)
+                } else {
+                    entry
+                }
+            }
+            val currentEntry = currentUser?.takeIf { me ->
+                topEntries.none { it.rank == me.rank }
+            }
+            if (topEntries.isNotEmpty() || currentEntry != null) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Leaderboard", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "Regions first, then countries",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                item { RankingTable(topEntries, currentEntry) }
+            }
+            if (topEntries.isEmpty() && currentEntry == null) {
                 item {
                     Text(
                         "No other ranked explorers yet.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else {
-                items(ranking?.entries.orEmpty(), key = { "${it.rank}-${it.displayName}" }) { entry ->
-                    RankingRow(entry)
-                }
             }
+        }
+
         }
 
         error?.let { message ->
@@ -172,40 +244,166 @@ fun RankingScreen(
 }
 
 @Composable
-private fun MyRankingCard(entry: GeographyRankingEntry) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Your position", style = MaterialTheme.typography.labelLarge)
-            Text("#${entry.rank} · ${entry.displayName}", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "${entry.admin1Count} regions · ${entry.countryCount} countries",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
+private fun RankingTable(
+    entries: List<GeographyRankingEntry>,
+    currentEntry: GeographyRankingEntry?,
+) {
+    Card {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "#",
+                    modifier = Modifier.width(42.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Explorer",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Regions",
+                    modifier = Modifier.width(68.dp),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Countries",
+                    modifier = Modifier.width(78.dp),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            HorizontalDivider()
+            entries.forEachIndexed { index, entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            if (entry.isCurrentUser) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                androidx.compose.ui.graphics.Color.Transparent
+                            },
+                        )
+                        .then(
+                            if (entry.isCurrentUser) {
+                                Modifier.padding(horizontal = 4.dp)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 12.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${entry.rank}",
+                        modifier = Modifier.width(42.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (entry.isCurrentUser) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            entry.displayName.take(1).uppercase(),
+                            modifier = Modifier.padding(end = 8.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (entry.isCurrentUser) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        Text(
+                            entry.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                        )
+                    }
+                    Text(
+                        "${entry.admin1Count}",
+                        modifier = Modifier.width(68.dp),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        "${entry.countryCount}",
+                        modifier = Modifier.width(78.dp),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                if (index < entries.lastIndex) HorizontalDivider()
+            }
+            currentEntry?.let { me ->
+                HorizontalDivider()
+                Text(
+                    "…",
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider()
+                RankingTableRow(me)
+            }
         }
     }
 }
 
 @Composable
-private fun RankingRow(entry: GeographyRankingEntry) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun RankingTableRow(entry: GeographyRankingEntry) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(horizontal = 12.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "${entry.rank}",
+            modifier = Modifier.width(42.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("#${entry.rank}", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(entry.displayName, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "${entry.admin1Count} regions · ${entry.countryCount} countries",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                entry.displayName.take(1).uppercase(),
+                modifier = Modifier.padding(end = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(entry.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
         }
+        Text(
+            "${entry.admin1Count}",
+            modifier = Modifier.width(68.dp),
+            textAlign = TextAlign.End,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            "${entry.countryCount}",
+            modifier = Modifier.width(78.dp),
+            textAlign = TextAlign.End,
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }

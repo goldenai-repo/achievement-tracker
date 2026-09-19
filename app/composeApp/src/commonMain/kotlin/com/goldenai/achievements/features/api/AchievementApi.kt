@@ -63,8 +63,10 @@ data class CheckInResponse(
 
 @Serializable
 data class SummaryResponse(
-    val checkinCount: Int,
-    val uniqueUnlockCount: Int,
+    val checkinCount: Int = 0,
+    val uniqueUnlockCount: Int = 0,
+    val countryCount: Int? = null,
+    val admin1Count: Int? = null,
     val byKind: Map<String, Int> = emptyMap(),
 )
 

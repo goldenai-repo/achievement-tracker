@@ -1,19 +1,21 @@
 package com.goldenai.achievements.features.profile.presentation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -29,10 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.CircleShape
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -60,7 +60,9 @@ class ProfileViewModel(
     val summary = repo.summary
     val localCheckinCount = repo.watchCountAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
-    val localUniquePlaceCount = repo.watchUniqueEntityCount()
+    val localCountryCount = repo.watchUniqueCountryCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    val localAdmin1Count = repo.watchUniqueAdmin1Count()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     val pendingCount = repo.watchPendingCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
@@ -218,7 +220,8 @@ fun ProfileScreen(
     val profile by vm.profile.collectAsState()
     val summary by vm.summary.collectAsState()
     val localCheckinCount by vm.localCheckinCount.collectAsState()
-    val localUniquePlaceCount by vm.localUniquePlaceCount.collectAsState()
+    val localCountryCount by vm.localCountryCount.collectAsState()
+    val localAdmin1Count by vm.localAdmin1Count.collectAsState()
     val pendingCount by vm.pendingCount.collectAsState()
     val syncing by vm.syncing.collectAsState()
     val syncError by vm.syncError.collectAsState()
@@ -252,11 +255,81 @@ fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ProfileAvatar(displayName)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Profile", style = MaterialTheme.typography.headlineMedium)
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            displayName,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        if (user != null && !editingUsername) {
+                            TextButton(
+                                onClick = {
+                                    usernameDraft = profile?.displayName.orEmpty()
+                                    editingUsername = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                            ) { Text("Edit username") }
+                        }
+                        if (user != null && AppGraph.cloudAvailable) {
+                            IconButton(
+                                onClick = vm::syncNow,
+                                enabled = !syncing && !deletingAccount,
+                            ) {
+                                Text(
+                                    text = if (syncing) "…" else "↻",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        email ?: "Local-only guest profile",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (user == null) {
+                        Text(
+                            "Guest mode · data stays on this device",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (user != null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ProfileStatusPill(
+                                "Signed in",
+                                MaterialTheme.colorScheme.secondaryContainer,
+                            )
+                            if (AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER)) {
+                                ProfileStatusPill(
+                                    "Google linked",
+                                    MaterialTheme.colorScheme.tertiaryContainer,
+                                )
+                            }
+                            if (AppGraph.cloudAvailable) {
+                                ProfileStatusPill(
+                                    when {
+                                        syncing -> "Syncing"
+                                        pendingCount > 0L -> "Pending"
+                                        else -> "Synced"
+                                    },
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                )
+                            }
+                        }
+                    }
                     if (editingUsername && user != null) {
                         OutlinedTextField(
                             value = usernameDraft,
@@ -284,77 +357,89 @@ fun ProfileScreen(
                                 enabled = !savingUsername,
                             ) { Text("Cancel") }
                         }
-                    } else {
-                        Text(displayName, style = MaterialTheme.typography.titleMedium)
-                        if (user != null) {
-                            TextButton(
+                    }
+                    AccountSyncSection(
+                        cloudAvailable = AppGraph.cloudAvailable,
+                        user = user,
+                        syncing = syncing,
+                        lastSyncAt = lastSyncAt,
+                        syncError = syncError,
+                        onSignIn = onSignIn,
+                        onRegister = onRegister,
+                        googleLinked = AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER),
+                        onLinkGoogle = vm::linkGoogleIdToken,
+                        onLinkGoogleError = vm::setExternalError,
+                        deletingAccount = deletingAccount,
+                    )
+                    if (user != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = vm::signOut,
+                                enabled = !deletingAccount && !syncing,
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary),
+                            ) { Text("Sign out") }
+                            OutlinedButton(
                                 onClick = {
-                                    usernameDraft = profile?.displayName.orEmpty()
-                                    editingUsername = true
+                                    showDeleteDialog = true
+                                    deleteWithPassword = !AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER)
                                 },
-                            ) { Text("Edit username") }
+                                enabled = !deletingAccount && !syncing,
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                            ) { Text("Delete account") }
                         }
                     }
-                    Text(
-                        email ?: "Local-only guest profile",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        if (user != null) {
-            profile?.uid?.let { uid ->
-                item {
-                    Text(
-                        "User ID: ${uid.take(18)}${if (uid.length > 18) "…" else ""}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
         }
 
         item {
             val checkins = remoteSummary?.checkinCount?.toLong() ?: localCheckinCount
-            val unlocked = remoteSummary?.uniqueUnlockCount?.toLong() ?: localUniquePlaceCount
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Your progress", style = MaterialTheme.typography.titleLarge)
+            // Prefer hierarchy-aware counts from the API. Falling back to the
+            // local cache also keeps Profile correct while an older backend is
+            // still serving the legacy byKind-only summary response.
+            val countries = remoteSummary?.countryCount?.toLong() ?: localCountryCount
+            val regions = remoteSummary?.admin1Count?.toLong() ?: localAdmin1Count
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Travel footprint", style = MaterialTheme.typography.titleLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard("Check-ins", checkins, "visits", Modifier.weight(1f))
-                    StatCard("Places", unlocked, "unlocked", Modifier.weight(1f))
+                    StatCard("Check-ins", checkins.toString(), "visits", Modifier.weight(1f))
+                    StatCard("Countries", countries.toString(), "visited", Modifier.weight(1f))
+                    StatCard("Regions", regions.toString(), "states / provinces", Modifier.weight(1f))
                 }
             }
         }
 
         item {
-            OutlinedButton(onClick = onViewLog, modifier = Modifier.fillMaxWidth()) {
-                Text("View full log")
+            Card {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Your log", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Review places and visit history",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onViewLog) { Text("Open") }
+                }
             }
-        }
-
-        item {
-            SyncCard(
-                cloudAvailable = AppGraph.cloudAvailable,
-                user = user,
-                pendingCount = pendingCount,
-                syncing = syncing,
-                lastSyncAt = lastSyncAt,
-                syncError = syncError,
-                onSync = vm::syncNow,
-                onSignIn = onSignIn,
-                onRegister = onRegister,
-                onSignOut = vm::signOut,
-                googleLinked = AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER),
-                onLinkGoogle = vm::linkGoogleIdToken,
-                onLinkGoogleError = vm::setExternalError,
-                deletingAccount = deletingAccount,
-                onDeleteAccount = {
-                    showDeleteDialog = true
-                    deleteWithPassword = !AppGraph.auth.hasProvider(AuthRepository.GOOGLE_PROVIDER)
-                },
-            )
         }
 
         error?.let { message ->
@@ -459,17 +544,20 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileAvatar(name: String) {
+private fun ProfileStatusPill(
+    label: String,
+    containerColor: androidx.compose.ui.graphics.Color,
+) {
     Surface(
-        modifier = Modifier.clip(CircleShape),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = MaterialTheme.shapes.small,
+        color = containerColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Text(
-            text = name.take(1).uppercase(),
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -477,13 +565,16 @@ private fun ProfileAvatar(name: String) {
 @Composable
 private fun StatCard(
     label: String,
-    value: Long,
+    value: String,
     description: String,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier = modifier) {
-        Column(Modifier.padding(14.dp)) {
-            Text(value.toString(), style = MaterialTheme.typography.headlineSmall)
+    Card(modifier = modifier.height(92.dp)) {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(value, style = MaterialTheme.typography.headlineSmall)
             Text(label, style = MaterialTheme.typography.titleSmall)
             Text(
                 description,
@@ -495,46 +586,35 @@ private fun StatCard(
 }
 
 @Composable
-private fun SyncCard(
+private fun AccountSyncSection(
     cloudAvailable: Boolean,
     user: AppUser?,
-    pendingCount: Long,
     syncing: Boolean,
     lastSyncAt: Long?,
     syncError: String?,
-    onSync: () -> Unit,
     onSignIn: () -> Unit,
     onRegister: () -> Unit,
-    onSignOut: () -> Unit,
     googleLinked: Boolean,
     onLinkGoogle: (String) -> Unit,
     onLinkGoogleError: (String) -> Unit,
     deletingAccount: Boolean,
-    onDeleteAccount: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (user == null) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Cloud sync", style = MaterialTheme.typography.titleMedium)
-            when {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (!cloudAvailable || user == null) {
+            Text(
+                if (!cloudAvailable) "Local-only storage" else "Sign in to back up your achievements",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        when {
                 !cloudAvailable -> {
                     Text(
-                        "Cloud sync is not configured. Your profile and achievements stay on this device.",
+                        "Cloud access is not configured. Your profile and achievements stay on this device.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 user == null -> {
-                    Text(
-                        "Guest mode is active. Sign in to back up your achievements.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onRegister, modifier = Modifier.weight(1f)) {
                             Text("Create account")
@@ -546,40 +626,14 @@ private fun SyncCard(
                 }
                 else -> {
                     Text(
-                        when {
-                            syncing -> "Syncing…"
-                            pendingCount > 0 -> "$pendingCount waiting to upload"
-                            else -> "All achievements backed up"
-                        },
+                        lastSyncAt?.let { "Last synced ${formatDateTime(it)}" } ?: "Not synced yet",
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    lastSyncAt?.let {
-                        Text(
-                            "Last synced ${formatDateTime(it)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     syncError?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = onSync,
-                            enabled = !syncing,
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Sync now") }
-                        OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
-                            Text("Sign out")
-                        }
-                    }
-                    if (googleLinked) {
-                        Text(
-                            "Google account linked",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
+                    if (!googleLinked) {
                         GoogleSignInButton(
                             enabled = !syncing && !deletingAccount,
                             label = "Link Google account",
@@ -587,17 +641,7 @@ private fun SyncCard(
                             onError = onLinkGoogleError,
                         )
                     }
-                    TextButton(
-                        onClick = onDeleteAccount,
-                        enabled = !syncing && !deletingAccount,
-                    ) {
-                        Text(
-                            if (deletingAccount) "Deleting account…" else "Delete account",
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
                 }
-            }
         }
     }
 }

@@ -313,8 +313,30 @@ def get_summary(db: Session, user_id: str) -> dict:
         )
         .group_by(CatalogEntity.kind)
     )
+    unlocked_entities = list(
+        db.scalars(
+            select(CatalogEntity)
+            .join(
+                UserUnlock,
+                (UserUnlock.entity_id == CatalogEntity.id) & (UserUnlock.user_id == user_id),
+            )
+        )
+    )
+    country_ids = {
+        entity.id for entity in unlocked_entities if entity.kind == "country"
+    }
+    country_ids.update(
+        entity.parent_id
+        for entity in unlocked_entities
+        if entity.kind == "admin1" and entity.parent_id
+    )
+    admin1_ids = {
+        entity.id for entity in unlocked_entities if entity.kind == "admin1"
+    }
     return {
         "checkinCount": checkin_count or 0,
         "uniqueUnlockCount": unique_count or 0,
+        "countryCount": len(country_ids),
+        "admin1Count": len(admin1_ids),
         "byKind": {kind: count for kind, count in by_kind},
     }
