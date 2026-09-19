@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.goldenai.achievements.ui.EnsurePlatformEmojiFontFallback
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF6D5E0F),
@@ -51,6 +52,9 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
+    // iOS: register Apple Color Emoji with Skia so emoji in Text (and mixed
+    // emoji+Latin labels) do not render as □. Android no-op.
+    EnsurePlatformEmojiFontFallback()
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
         content = content,

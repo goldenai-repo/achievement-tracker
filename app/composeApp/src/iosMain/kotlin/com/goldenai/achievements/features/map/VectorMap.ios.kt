@@ -11,6 +11,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.serialization.Serializable
@@ -55,7 +58,7 @@ private data class ViewportPayload(
  * MapLibre Native map embedded via UIKitView. Rendering lives in the Swift
  * host (`AchievementMapView`); this actual only forwards shared map state.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalComposeUiApi::class)
 @Composable
 actual fun VectorMap(
     points: List<MapPoint>,
@@ -178,5 +181,10 @@ actual fun VectorMap(
                 cameraResetKey = cameraResetKey,
             )
         },
+        // MapLibre must own pan/zoom/tap gestures. Cooperative mode delays
+        // touches and breaks map interaction inside Explore's scroll column.
+        properties = UIKitInteropProperties(
+            interactionMode = UIKitInteropInteractionMode.NonCooperative,
+        ),
     )
 }
