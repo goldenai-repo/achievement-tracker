@@ -143,10 +143,7 @@ final class AchievementMapView: UIView, MLNMapViewDelegate, UIGestureRecognizerD
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        // A drag that starts on the map must stay owned by MapLibre. Allowing
-        // simultaneous recognition lets an ancestor scroll view move the whole
-        // Explore/Search page while the user is panning a boundary.
-        false
+        true
     }
 
     private func renderMarkers(pointsJson: String) {
