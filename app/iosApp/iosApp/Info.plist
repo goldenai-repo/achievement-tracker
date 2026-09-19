@@ -35,6 +35,9 @@
 	<string>http://127.0.0.1:8000</string>
 	<key>MAP_STYLE_URL</key>
 	<string>https://tiles.openfreemap.org/styles/bright</string>
+	<!-- Google Sign-In: after adding GoogleService-Info.plist, add:
+	     CFBundleURLTypes → CFBundleURLSchemes = REVERSED_CLIENT_ID from that plist.
+	     See project.yml comments. Guest builds without the plist remain valid. -->
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>
