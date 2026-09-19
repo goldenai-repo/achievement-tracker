@@ -55,12 +55,18 @@ actual fun GoogleSignInButton(
                     } else {
                         onError("Google did not return a supported credential.")
                     }
-                } catch (_: CancellationException) {
-                    // Closing the account picker is a normal user action.
-                } catch (_: NoCredentialException) {
+                } catch (t: CancellationException) {
                     onError(
-                        "No Google account is available on this emulator. " +
-                            "Add a Google account in Settings and try again.",
+                        "Google credential flow cancelled " +
+                            "(${t::class.simpleName}): " +
+                            (t.message ?: "no cancellation message"),
+                    )
+                } catch (t: NoCredentialException) {
+                    onError(
+                        "Google credential unavailable " +
+                            "(${t::class.simpleName}): " +
+                            (t.message ?: "no credential message") +
+                            ". Check Play Services, the Google account, and Play App Signing SHA fingerprints.",
                     )
                 } catch (t: Throwable) {
                     onError(t.message ?: "Google sign-in failed.")
