@@ -10,6 +10,9 @@ packages:
     url: https://github.com/firebase/firebase-ios-sdk
     # GitLive firebase-kotlin-sdk 2.5.0 is built against Firebase iOS 11.8
     from: 11.8.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 8.0.0
   MapLibre:
     url: https://github.com/maplibre/maplibre-gl-native-distribution
     from: 6.25.0
@@ -27,6 +30,8 @@ targets:
         products:
           - FirebaseAuth
           - FirebaseFirestore
+      - package: GoogleSignIn
+        product: GoogleSignIn
       - package: MapLibre
         product: MapLibre
     info:
@@ -43,6 +48,14 @@ targets:
         # Mirrors Android BuildConfig debug defaults (simulator loopback).
         API_BASE_URL: "http://127.0.0.1:8000"
         MAP_STYLE_URL: "https://tiles.openfreemap.org/styles/bright"
+        # Google Sign-In OAuth redirect (do not commit REVERSED_CLIENT_ID).
+        # After adding gitignored GoogleService-Info.plist, set CFBundleURLTypes in
+        # Info.plist (or here) to a single URL scheme equal to that file's
+        # REVERSED_CLIENT_ID value, then run `xcodegen generate`.
+        # Example:
+        # CFBundleURLTypes:
+        #   - CFBundleURLSchemes:
+        #       - com.googleusercontent.apps.YOUR-REVERSED-CLIENT-ID
 
     settings:
       base:
